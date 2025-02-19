@@ -1,22 +1,35 @@
+import { ActionButton } from "@follow/components/ui/button/index.js"
+import { FeedViewType } from "@follow/constants"
+import { stopPropagation } from "@follow/utils/dom"
+import { cn } from "@follow/utils/utils"
 import { m } from "framer-motion"
-import { throttle } from "lodash-es"
 import type { FC, PropsWithChildren } from "react"
-import { memo, useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { cloneElement, memo, useCallback, useId, useMemo, useRef, useState } from "react"
+import { Trans } from "react-i18next"
 import { useDebounceCallback } from "usehooks-ts"
 
 import { SafeFragment } from "~/components/common/Fragment"
-import { ActionButton } from "~/components/ui/button"
 import { RelativeDay } from "~/components/ui/datetime"
-import { useScrollViewElement } from "~/components/ui/scroll-area/hooks"
 import { IconScaleTransition } from "~/components/ux/transition/icon"
 import { useRouteParams } from "~/hooks/biz/useRouteParams"
-import { stopPropagation } from "~/lib/dom"
-import { FeedViewType } from "~/lib/enum"
-import { cn } from "~/lib/utils"
 import { isListSubscription } from "~/store/subscription"
 
 import { useMarkAllByRoute } from "../hooks/useMarkAll"
 
+interface DateItemInnerProps {
+  date: Date
+  startTime: number
+  endTime: number
+  className?: string
+  Wrapper?: FC<PropsWithChildren>
+  isSticky?: boolean
+}
+
+type DateItemProps = Pick<DateItemInnerProps, "isSticky"> & {
+  view: FeedViewType
+  date: string
+  className?: string
+}
 const useParseDate = (date: string) =>
   useMemo(() => {
     const dateObj = new Date(date)
@@ -27,69 +40,50 @@ const useParseDate = (date: string) =>
     }
   }, [date])
 
-const useSticky = () => {
-  const $scroller = useScrollViewElement()
-  const itemRef = useRef<HTMLDivElement>(null)
-
-  const [isSticky, setIsSticky] = useState(false)
-  useLayoutEffect(() => {
-    const $ = itemRef.current?.parentElement
-    if (!$) return
-    const handler = throttle((e: HTMLElementEventMap["scroll"]) => {
-      if ((e.target as HTMLElement).scrollTop < 10) {
-        setIsSticky(false)
-        return
-      }
-      const isSticky = $.offsetTop <= 0
-
-      setIsSticky(isSticky)
-    }, 16)
-    $scroller?.addEventListener("scroll", handler)
-    return () => {
-      $scroller?.removeEventListener("scroll", handler)
-    }
-  }, [$scroller])
-
-  return { isSticky, itemRef }
-}
-export const DateItem = memo(({ date, view }: { date: string; view: FeedViewType }) => {
-  const className = cn(
-    "pt-2",
-    `relative z-10 -mx-2 flex items-center gap-1 bg-background px-4 text-base font-bold text-zinc-800 dark:text-neutral-400`,
-  )
+export const DateItem = memo(({ date, view, isSticky }: DateItemProps) => {
+  const className = tw`relative flex items-center text-sm lg:text-base gap-1 bg-background px-4 font-bold text-zinc-800 dark:text-neutral-400 h-7`
 
   if (view === FeedViewType.SocialMedia) {
-    return <SocialMediaDateItem date={date} className={className} />
+    return <SocialMediaDateItem date={date} className={className} isSticky={isSticky} />
   }
-  return <UniversalDateItem date={date} className={className} />
+  return <UniversalDateItem date={date} className={className} isSticky={isSticky} />
 })
-const UniversalDateItem = ({ date, className }: { date: string; className?: string }) => {
+const UniversalDateItem = ({ date, className, isSticky }: Omit<DateItemProps, "view">) => {
   const { startOfDay, endOfDay, dateObj } = useParseDate(date)
 
   return (
-    <DateItemInner className={className} date={dateObj} startTime={startOfDay} endTime={endOfDay} />
+    <DateItemInner
+      className={className}
+      date={dateObj}
+      startTime={startOfDay}
+      endTime={endOfDay}
+      isSticky={isSticky}
+    />
   )
 }
 
-const DateItemInner: FC<{
-  date: Date
-  startTime: number
-  endTime: number
-  className?: string
-  Wrapper?: FC<PropsWithChildren>
-}> = ({ date, endTime, startTime, className, Wrapper }) => {
+const DateItemInner: FC<DateItemInnerProps> = ({
+  date,
+  endTime,
+  startTime,
+  className,
+  Wrapper,
+  isSticky,
+}) => {
   const rid = useId()
-  const RelativeElement = (
-    <m.span key="b" layout layoutId={rid}>
-      <RelativeDay date={date} />
-    </m.span>
+  const RelativeElement = useMemo(
+    () => (
+      <m.span key="b" className="inline-flex items-center" layout layoutId={rid}>
+        <RelativeDay date={date} />
+      </m.span>
+    ),
+    [date, rid],
   )
 
   const handleMarkAllAsRead = useMarkAllByRoute({
     startTime,
     endTime,
   })
-  const { isSticky, itemRef } = useSticky()
 
   const [confirmMark, setConfirmMark] = useState(false)
   const removeConfirm = useDebounceCallback(
@@ -108,10 +102,10 @@ const DateItemInner: FC<{
   const { feedId } = useRouteParams()
   const isList = isListSubscription(feedId)
 
+  const tooltipId = useRef(Math.random().toString())
   return (
     <div
       className={cn(className, isSticky && "border-b")}
-      ref={itemRef}
       onClick={stopPropagation}
       onMouseEnter={removeConfirm.cancel}
       onMouseLeave={removeConfirm}
@@ -120,11 +114,15 @@ const DateItemInner: FC<{
         <ActionButton
           tooltip={
             <span>
-              Mark
-              <span> </span>
-              {RelativeElement}
-              <span> </span>
-              as read
+              <Trans
+                i18nKey="mark_all_read_button.mark_as_read"
+                components={{
+                  which: useMemo(
+                    () => cloneElement(RelativeElement, { layoutId: tooltipId.current }),
+                    [RelativeElement],
+                  ),
+                }}
+              />
             </span>
           }
           onClick={() => {
@@ -147,9 +145,12 @@ const DateItemInner: FC<{
 
         {confirmMark ? (
           <div className="animate-mask-in" key="a">
-            Mark
-            <span> </span>
-            {RelativeElement} as read?
+            <Trans
+              i18nKey="mark_all_read_button.confirm_mark_all"
+              components={{
+                which: <>{RelativeElement}</>,
+              }}
+            />
           </div>
         ) : (
           RelativeElement
@@ -158,7 +159,15 @@ const DateItemInner: FC<{
     </div>
   )
 }
-const SocialMediaDateItem = ({ date, className }: { date: string; className?: string }) => {
+const SocialMediaDateItem = ({
+  date,
+  className,
+  isSticky,
+}: {
+  date: string
+  className?: string
+  isSticky?: boolean
+}) => {
   const { startOfDay, endOfDay, dateObj } = useParseDate(date)
 
   return (
@@ -166,7 +175,9 @@ const SocialMediaDateItem = ({ date, className }: { date: string; className?: st
       // @ts-expect-error
       Wrapper={useCallback(
         ({ children }) => (
-          <div className="m-auto flex w-[645px] gap-3 pl-5 text-lg">{children}</div>
+          <div className="m-auto flex w-[645px] max-w-full select-none gap-3 pl-5 text-base lg:text-lg">
+            {children}
+          </div>
         ),
         [],
       )}
@@ -174,6 +185,7 @@ const SocialMediaDateItem = ({ date, className }: { date: string; className?: st
       date={dateObj}
       startTime={startOfDay}
       endTime={endOfDay}
+      isSticky={isSticky}
     />
   )
 }

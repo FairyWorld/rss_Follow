@@ -1,51 +1,35 @@
 import { atom } from "jotai"
 
-import { getRouteParams } from "~/hooks/biz/useRouteParams"
-import { FeedViewType } from "~/lib/enum"
 import { createAtomHooks } from "~/lib/jotai"
 
-const defaultFeedView = FeedViewType.Articles
-const viewAtom = atom<FeedViewType | -1>(-1)
+import { getIsZenMode, useIsZenMode } from "./settings/ui"
+
 const [
   ,
-  useSidebarActiveView,
-  useSidebarActiveViewValue_,
-  useSetSidebarActiveView,
-  _getSidebarActiveView,
-  setSidebarActiveView,
-] = createAtomHooks(viewAtom)
+  ,
+  internal_useTimelineColumnShow,
+  ,
+  internal_getTimelineColumnShow,
+  setTimelineColumnShow,
+] = createAtomHooks(atom(true))
 
-const getSidebarActiveView = (): FeedViewType => {
-  const view = _getSidebarActiveView()
-  if (view === -1) {
-    return defaultFeedView
-  }
-  return view
+export const useTimelineColumnShow = () => {
+  const isZenMode = useIsZenMode()
+  return internal_useTimelineColumnShow() && !isZenMode
 }
 
-const useSidebarActiveViewValue = (): FeedViewType => {
-  const view = useSidebarActiveViewValue_()
-  if (view === -1) {
-    return defaultFeedView
-  }
-  return view
+export const getFeedColumnShow = () => {
+  const isZenMode = getIsZenMode()
+  return internal_getTimelineColumnShow() && !isZenMode
 }
 
-export {
-  getSidebarActiveView,
-  setSidebarActiveView,
-  useSetSidebarActiveView,
-  /**
-   * Get original value of sidebar active view
-   */
-  useSidebarActiveView,
-  useSidebarActiveViewValue,
-}
+export { setTimelineColumnShow }
 
-viewAtom.onMount = () => {
-  const { view } = getRouteParams()
-  if (view !== undefined) {
-    setSidebarActiveView(view)
-  }
-}
-export const [, , useFeedColumnShow, , , setFeedColumnShow] = createAtomHooks(atom(true))
+export const [
+  ,
+  ,
+  useTimelineColumnTempShow,
+  ,
+  getTimelineColumnTempShow,
+  setTimelineColumnTempShow,
+] = createAtomHooks(atom(false))

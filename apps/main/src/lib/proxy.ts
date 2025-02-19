@@ -1,4 +1,5 @@
 import { session } from "electron"
+import { ProxyAgent, setGlobalDispatcher } from "undici"
 
 import { logger } from "../logger"
 import { store } from "./store"
@@ -24,7 +25,7 @@ export const setProxyConfig = (inputProxy: string) => {
 }
 
 export const getProxyConfig = () => {
-  const proxyConfig = store.get("proxy") as string | undefined
+  const proxyConfig = store.get("proxy")
   if (!proxyConfig) {
     return
   }
@@ -36,20 +37,19 @@ const URL_SCHEME = new Set(["http:", "https:", "ftp:", "socks:", "socks4:", "soc
 
 const normalizeProxyUri = (userProxy: string) => {
   if (!userProxy) {
-    return
+    return ""
   }
+  // Only use the first proxy if there are multiple urls
+  const firstInput = userProxy.split(",")[0]!
+
   try {
-    const proxyUrl = new URL(userProxy)
-    if (!URL_SCHEME.has(proxyUrl.protocol) || !proxyUrl.hostname || !proxyUrl.port) {
+    const proxyUrl = new URL(firstInput)
+    if (!URL_SCHEME.has(proxyUrl.protocol) || !proxyUrl.hostname) {
       return
     }
     // There are multiple ways to specify a proxy in Electron,
     // but for security reasons, we only support simple proxy URLs for now.
-    return [
-      `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`,
-      // Failing over to using no proxy if the proxy is unavailable
-      "direct://",
-    ].join(",")
+    return `${proxyUrl.protocol}//${proxyUrl.hostname}${proxyUrl.port ? `:${proxyUrl.port}` : ""}`
   } catch {
     return
   }
@@ -67,10 +67,19 @@ export const updateProxy = () => {
     })
     return
   }
+  const proxyRules = [
+    proxyUri,
+    // Failing over to using no proxy if the proxy is unavailable
+    "direct://",
+  ].join(",")
 
-  logger.log(`Loading proxy: ${proxyUri}`)
+  logger.log(`Loading proxy: ${proxyRules}`)
   session.defaultSession.setProxy({
-    proxyRules: proxyUri,
+    proxyRules,
     proxyBypassRules: BYPASS_RULES,
   })
+  // Currently, Session.setProxy is not working for native fetch, which is used by readability.
+  // So we need to set proxy for native fetch manually, refer to https://stackoverflow.com/a/76503362/14676508
+  const dispatcher = new ProxyAgent({ uri: new URL(proxyUri).toString() })
+  setGlobalDispatcher(dispatcher)
 }

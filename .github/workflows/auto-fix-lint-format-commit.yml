@@ -15,10 +15,6 @@ jobs:
           ref: ${{ github.head_ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
 
-      - name: AutoCorrect
-        if: runner.os == 'Linux'
-        uses: huacnlee/autocorrect-action@main
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -32,7 +28,9 @@ jobs:
         run: pnpm install
 
       - name: Run linter and fix issues
-        run: pnpm run lint:fix
+        run: |
+          export NODE_OPTIONS="--max_old_space_size=16384"
+          pnpm run lint:fix
 
       - name: Run formatter
         run: pnpm run format

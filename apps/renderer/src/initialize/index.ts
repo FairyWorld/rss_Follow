@@ -1,14 +1,10 @@
+import { initializeDayjs } from "@follow/components/dayjs"
 import { registerGlobalContext } from "@follow/shared/bridge"
-import { env } from "@follow/shared/env"
-import { authConfigManager } from "@hono/auth-js/react"
+import { IN_ELECTRON } from "@follow/shared/constants"
 import { repository } from "@pkg"
-import dayjs from "dayjs"
-import duration from "dayjs/plugin/duration"
-import localizedFormat from "dayjs/plugin/localizedFormat"
-import relativeTime from "dayjs/plugin/relativeTime"
 import { enableMapSet } from "immer"
 
-import { isElectronBuild } from "~/constants"
+import { isDev, isElectronBuild } from "~/constants"
 import { browserDB } from "~/database"
 import { initI18n } from "~/i18n"
 import { settingSyncQueue } from "~/modules/settings/helper/sync-queue"
@@ -18,9 +14,10 @@ import { CleanerService } from "~/services/cleaner"
 import { subscribeNetworkStatus } from "../atoms/network"
 import { getGeneralSettings, subscribeShouldUseIndexedDB } from "../atoms/settings/general"
 import { appLog } from "../lib/log"
+import { initAnalytics } from "./analytics"
+import { registerHistoryStack } from "./history"
 import { hydrateDatabaseToStore, hydrateSettings, setHydrated } from "./hydrate"
 import { doMigration } from "./migrates"
-import { initPostHog } from "./posthog"
 import { initSentry } from "./sentry"
 
 const cleanup = subscribeShouldUseIndexedDB((value) => {
@@ -41,17 +38,31 @@ declare global {
 }
 
 export const initializeApp = async () => {
-  appLog(`${APP_NAME}: Next generation information browser`, repository.url)
+  appLog(`${APP_NAME}: Follow everything in one place`, repository.url)
+
+  if (isDev) {
+    const favicon = await import("/favicon-dev.ico?url")
+
+    const url = new URL(favicon.default, import.meta.url).href
+
+    // Change favicon
+    const $icon = document.head.querySelector("link[rel='icon']")
+    if ($icon) {
+      $icon.setAttribute("href", url)
+    } else {
+      const icon = document.createElement("link")
+      icon.setAttribute("rel", "icon")
+      icon.setAttribute("href", url)
+      document.head.append(icon)
+    }
+  }
+
   appLog(`Initialize ${APP_NAME}...`)
   window.version = APP_VERSION
 
   const now = Date.now()
-  // Initialize the auth config first
-  authConfigManager.setConfig({
-    baseUrl: env.VITE_API_URL,
-    basePath: "/auth",
-    credentials: "include",
-  })
+  initializeDayjs()
+  registerHistoryStack()
 
   // Set Environment
   document.documentElement.dataset.buildType = isElectronBuild ? "electron" : "web"
@@ -71,11 +82,6 @@ export const initializeApp = async () => {
 
   apm("migration", doMigration)
 
-  // Initialize dayjs
-  dayjs.extend(duration)
-  dayjs.extend(relativeTime)
-  dayjs.extend(localizedFormat)
-
   // Enable Map/Set in immer
   enableMapSet()
 
@@ -92,7 +98,7 @@ export const initializeApp = async () => {
   const { dataPersist: enabledDataPersist } = getGeneralSettings()
 
   initSentry()
-  initPostHog()
+  initAnalytics()
   await apm("i18n", initI18n)
 
   let dataHydratedTime: undefined | number
@@ -105,8 +111,8 @@ export const initializeApp = async () => {
   const loadingTime = Date.now() - now
   appLog(`Initialize ${APP_NAME} done,`, `${loadingTime}ms`)
 
-  window.posthog?.capture("app_init", {
-    electron: !!window.electron,
+  window.analytics?.capture("app_init", {
+    electron: IN_ELECTRON,
     loading_time: loadingTime,
     using_indexed_db: enabledDataPersist,
     data_hydrated_time: dataHydratedTime,

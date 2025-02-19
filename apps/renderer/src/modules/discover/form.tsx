@@ -1,17 +1,6 @@
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useMutation } from "@tanstack/react-query"
-import { useSingleton } from "foxact/use-singleton"
-import { produce } from "immer"
-import { atom, useAtomValue, useStore } from "jotai"
-import type { FC } from "react"
-import { memo, useCallback, useEffect } from "react"
-import { useForm } from "react-hook-form"
-import { useTranslation } from "react-i18next"
-import { z } from "zod"
-
-import { getSidebarActiveView } from "~/atoms/sidebar"
-import { Button } from "~/components/ui/button"
-import { Card, CardContent, CardFooter, CardHeader } from "~/components/ui/card"
+import { useMobile } from "@follow/components/hooks/useMobile.js"
+import { Button } from "@follow/components/ui/button/index.js"
+import { Card, CardContent, CardFooter, CardHeader } from "@follow/components/ui/card/index.jsx"
 import {
   Form,
   FormControl,
@@ -19,16 +8,29 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "~/components/ui/form"
-import { Input } from "~/components/ui/input"
+} from "@follow/components/ui/form/index.jsx"
+import { Input } from "@follow/components/ui/input/index.js"
+import { Radio } from "@follow/components/ui/radio-group/index.js"
+import { RadioGroup } from "@follow/components/ui/radio-group/RadioGroup.jsx"
+import { ResponsiveSelect } from "@follow/components/ui/select/responsive.js"
+import { getBackgroundGradient } from "@follow/utils/color"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useMutation } from "@tanstack/react-query"
+import { produce } from "immer"
+import { atom, useAtomValue, useStore } from "jotai"
+import type { ChangeEvent, FC } from "react"
+import { memo, useCallback, useState } from "react"
+import { useForm } from "react-hook-form"
+import { useTranslation } from "react-i18next"
+import { z } from "zod"
+
 import { Media } from "~/components/ui/media"
 import { useModalStack } from "~/components/ui/modal/stacked/hooks"
-import { Radio } from "~/components/ui/radio-group"
-import { RadioGroup } from "~/components/ui/radio-group/RadioGroup"
+import { useFollow } from "~/hooks/biz/useFollow"
+import { getRouteParams } from "~/hooks/biz/useRouteParams"
 import { apiClient } from "~/lib/api-fetch"
-import type { FeedViewType } from "~/lib/enum"
 
-import { FollowSummary } from "../../components/feed-summary"
+import { FollowSummary } from "../feed/feed-summary"
 import { FeedForm } from "./feed-form"
 
 const formSchema = z.object({
@@ -63,8 +65,8 @@ const info: Record<
 }
 
 type DiscoverSearchData = Awaited<ReturnType<typeof apiClient.discover.$post>>["data"]
-export function DiscoverForm({ type }: { type: string }) {
-  const { prefix, default: defaultValue } = info[type]
+export function DiscoverForm({ type = "search" }: { type?: string }) {
+  const { prefix, default: defaultValue } = info[type]!
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -79,7 +81,7 @@ export function DiscoverForm({ type }: { type: string }) {
     mutationFn: async ({ keyword, target }: { keyword: string; target: "feeds" | "lists" }) => {
       const { data } = await apiClient.discover.$post({
         json: {
-          keyword,
+          keyword: keyword.trim(),
           target,
         },
       })
@@ -89,17 +91,17 @@ export function DiscoverForm({ type }: { type: string }) {
       return data
     },
   })
-  const discoverSearchDataAtom = useSingleton(() => atom<DiscoverSearchData>()).current
+  const discoverSearchDataAtom = useState(() => atom<DiscoverSearchData>())[0]
 
   const discoverSearchData = useAtomValue(discoverSearchDataAtom)
 
   const { present, dismissAll } = useModalStack()
 
   function onSubmit(values: z.infer<typeof formSchema>) {
-    if (info[type].showModal) {
-      const defaultView = getSidebarActiveView() as FeedViewType
+    if (info[type]!.showModal) {
+      const defaultView = getRouteParams().view
       present({
-        title: "Add Feed",
+        title: t("feed_form.add_feed"),
         content: () => (
           <FeedForm
             asWidget
@@ -116,26 +118,26 @@ export function DiscoverForm({ type }: { type: string }) {
     }
   }
 
-  const keyword = form.watch("keyword")
-  useEffect(() => {
-    const trimmedKeyword = keyword.trim()
-    if (!prefix) {
+  const handleKeywordChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const trimmedKeyword = event.target.value.trimStart()
+      if (!prefix) {
+        form.setValue("keyword", trimmedKeyword, { shouldValidate: true })
+        return
+      }
+      const isValidPrefix = prefix.find((p) => trimmedKeyword.startsWith(p))
+      if (!isValidPrefix) {
+        form.setValue("keyword", prefix[0]!)
+        return
+      }
+      if (trimmedKeyword.startsWith(`${isValidPrefix}${isValidPrefix}`)) {
+        form.setValue("keyword", trimmedKeyword.slice(isValidPrefix.length))
+        return
+      }
       form.setValue("keyword", trimmedKeyword)
-      return
-    }
-    const isValidPrefix = prefix.find((p) => trimmedKeyword.startsWith(p))
-    if (!isValidPrefix) {
-      form.setValue("keyword", prefix[0])
-
-      return
-    }
-
-    if (trimmedKeyword.startsWith(`${isValidPrefix}${isValidPrefix}`)) {
-      form.setValue("keyword", trimmedKeyword.slice(isValidPrefix.length))
-    }
-
-    form.setValue("keyword", trimmedKeyword)
-  }, [form, keyword, prefix])
+    },
+    [form, prefix],
+  )
 
   const handleSuccess = useCallback(
     (item: DiscoverSearchData[number]) => {
@@ -144,9 +146,15 @@ export function DiscoverForm({ type }: { type: string }) {
       jotaiStore.set(
         discoverSearchDataAtom,
         produce(currentData, (draft) => {
-          const sub = draft.find(
-            (i) => i.feed?.id === item.feed?.id || i.list?.id === item.list?.id,
-          )
+          const sub = draft.find((i) => {
+            if (item.feed) {
+              return i.feed?.id === item.feed.id
+            }
+            if (item.list) {
+              return i.list?.id === item.list.id
+            }
+            return false
+          })
           if (!sub) return
           sub.isSubscribed = true
           sub.subscriptionCount = -~(sub.subscriptionCount as number)
@@ -184,12 +192,14 @@ export function DiscoverForm({ type }: { type: string }) {
     [form],
   )
 
+  const isMobile = useMobile()
+
   return (
     <>
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="w-[512px] space-y-8"
+          className="w-full max-w-[540px] space-y-8"
           data-testid="discover-form"
         >
           <FormField
@@ -197,9 +207,9 @@ export function DiscoverForm({ type }: { type: string }) {
             name="keyword"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t(info[type]?.label)}</FormLabel>
+                <FormLabel>{t(info[type]?.label!)}</FormLabel>
                 <FormControl>
-                  <Input autoFocus {...field} />
+                  <Input autoFocus {...field} onChange={handleKeywordChange} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -214,14 +224,26 @@ export function DiscoverForm({ type }: { type: string }) {
                   <FormLabel>{t("discover.target.label")}</FormLabel>
                   <FormControl>
                     <div className="flex gap-4 text-sm">
-                      <RadioGroup
-                        className="flex items-center"
-                        value={field.value}
-                        onValueChange={handleTargetChange}
-                      >
-                        <Radio label={t("discover.target.feeds")} value="feeds" />
-                        <Radio label={t("discover.target.lists")} value="lists" />
-                      </RadioGroup>
+                      {isMobile ? (
+                        <ResponsiveSelect
+                          size="sm"
+                          value={field.value}
+                          onValueChange={handleTargetChange}
+                          items={[
+                            { label: t("discover.target.feeds"), value: "feeds" },
+                            { label: t("discover.target.lists"), value: "lists" },
+                          ]}
+                        />
+                      ) : (
+                        <RadioGroup
+                          className="flex items-center"
+                          value={field.value}
+                          onValueChange={handleTargetChange}
+                        >
+                          <Radio label={t("discover.target.feeds")} value="feeds" />
+                          <Radio label={t("discover.target.lists")} value="lists" />
+                        </RadioGroup>
+                      )}
                     </div>
                   </FormControl>
                   <FormMessage />
@@ -231,16 +253,15 @@ export function DiscoverForm({ type }: { type: string }) {
           )}
           <div className="center flex" data-testid="discover-form-actions">
             <Button disabled={!form.formState.isValid} type="submit" isLoading={mutation.isPending}>
-              {info[type].showModal ? t("discover.preview") : t("words.search")}
+              {info[type]!.showModal ? t("discover.preview") : t("words.search")}
             </Button>
           </div>
         </form>
       </Form>
       {mutation.isSuccess && (
-        <div className="mt-8 max-w-lg">
+        <div className="mt-8 w-full max-w-lg">
           <div className="mb-4 text-zinc-500">
-            Found {mutation.data?.length || 0} feed
-            {mutation.data?.length > 1 && "s"}
+            {t("discover.search.results", { count: mutation.data?.length || 0 })}
           </div>
           <div className="space-y-6 text-sm">
             {discoverSearchData?.map((item) => (
@@ -263,7 +284,7 @@ const SearchCard: FC<{
   onSuccess: (item: DiscoverSearchData[number]) => void
   onUnSubscribed?: (item: DiscoverSearchData[number]) => void
 }> = memo(({ item, onSuccess }) => {
-  const { present } = useModalStack()
+  const follow = useFollow()
 
   return (
     <Card data-feed-id={item.feed?.id || item.list?.id} className="select-text">
@@ -293,18 +314,7 @@ const SearchCard: FC<{
                         className="flex min-w-0 flex-1 flex-col items-center gap-1"
                         rel="noreferrer"
                       >
-                        {assertEntry.media?.[0] ? (
-                          <Media
-                            src={assertEntry.media?.[0].url}
-                            type={assertEntry.media?.[0].type}
-                            previewImageUrl={assertEntry.media?.[0].preview_image_url}
-                            className="aspect-square w-full"
-                          />
-                        ) : (
-                          <div className="flex aspect-square w-full overflow-hidden rounded bg-stone-100 p-2 text-xs leading-tight text-zinc-500">
-                            {assertEntry.title}
-                          </div>
-                        )}
+                        <FeedCardMediaThumbnail entry={assertEntry} />
                         <div className="line-clamp-2 w-full text-xs leading-tight">
                           {assertEntry.title}
                         </div>
@@ -318,23 +328,16 @@ const SearchCard: FC<{
             <Button
               variant={item.isSubscribed ? "outline" : undefined}
               onClick={() => {
-                present({
-                  title: "Add Feed",
-                  content: ({ dismiss }) => (
-                    <FeedForm
-                      asWidget
-                      url={item.feed?.url}
-                      id={item.feed?.id || item.list?.id}
-                      isList={!!item.list?.id}
-                      defaultValues={{
-                        view: getSidebarActiveView().toString(),
-                      }}
-                      onSuccess={() => {
-                        onSuccess(item)
-                        dismiss()
-                      }}
-                    />
-                  ),
+                follow({
+                  isList: !!item.list?.id,
+                  id: item.list?.id,
+                  url: item.feed?.url,
+                  defaultValues: {
+                    view: getRouteParams().view.toString(),
+                  },
+                  onSuccess() {
+                    onSuccess(item)
+                  },
                 })
               }}
             >
@@ -342,7 +345,7 @@ const SearchCard: FC<{
             </Button>
             <div className="ml-6 text-zinc-500">
               <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                {item.subscriptionCount}
+                {item.subscriptionCount ?? 0}
               </span>{" "}
               Followers
             </div>
@@ -352,3 +355,26 @@ const SearchCard: FC<{
     </Card>
   )
 })
+
+const FeedCardMediaThumbnail: FC<{
+  entry: NonUndefined<DiscoverSearchData[number]["entries"]>[number]
+}> = ({ entry }) => {
+  const [, , , bgAccent, bgAccentLight, bgAccentUltraLight] = getBackgroundGradient(entry.title)
+  return entry.media?.[0] ? (
+    <Media
+      src={entry.media?.[0].url}
+      type={entry.media?.[0].type}
+      previewImageUrl={entry.media?.[0].preview_image_url}
+      className="aspect-square w-full"
+    />
+  ) : (
+    <div
+      className="relative flex aspect-square w-full items-end overflow-hidden rounded p-2 text-xs leading-tight text-zinc-900"
+      style={{
+        background: `linear-gradient(37deg, ${bgAccent} 27.82%, ${bgAccentLight} 79.68%, ${bgAccentUltraLight} 100%)`,
+      }}
+    >
+      <div className="line-clamp-2 text-right font-medium">{entry.title}</div>
+    </div>
+  )
+}

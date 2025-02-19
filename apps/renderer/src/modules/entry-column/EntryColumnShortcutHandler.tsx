@@ -1,20 +1,19 @@
+import { useRefValue } from "@follow/hooks"
 import type { FC } from "react"
 import { memo, useLayoutEffect, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
-import type { VirtuosoHandle } from "react-virtuoso"
 
 import { useMainContainerElement } from "~/atoms/dom"
 import { HotKeyScopeMap } from "~/constants"
 import { shortcuts } from "~/constants/shortcuts"
 import { useNavigateEntry } from "~/hooks/biz/useNavigateEntry"
 import { useRouteEntryId } from "~/hooks/biz/useRouteParams"
-import { useRefValue } from "~/hooks/common"
 
 export const EntryColumnShortcutHandler: FC<{
   refetch: () => void
   data: readonly string[]
-  virtuosoRef: React.RefObject<VirtuosoHandle>
-}> = memo(({ data, refetch, virtuosoRef }) => {
+  handleScrollTo: (index: number) => void
+}> = memo(({ data, refetch, handleScrollTo }) => {
   const dataRef = useRefValue(data!)
 
   useHotkeys(
@@ -58,16 +57,14 @@ export const EntryColumnShortcutHandler: FC<{
 
       const nextIndex = Math.min(currentActiveEntryIndex + 1, data.length - 1)
 
-      virtuosoRef.current?.scrollIntoView?.({
-        index: nextIndex,
-      })
+      handleScrollTo(nextIndex)
       const nextId = data![nextIndex]
 
       navigate({
         entryId: nextId,
       })
     },
-    { scopes: HotKeyScopeMap.Home, enabled: enabledArrowKey },
+    { scopes: HotKeyScopeMap.Home, enabled: enabledArrowKey, preventDefault: true },
   )
   useHotkeys(
     shortcuts.entries.previous.key,
@@ -78,16 +75,14 @@ export const EntryColumnShortcutHandler: FC<{
       const nextIndex =
         currentActiveEntryIndex === -1 ? data.length - 1 : Math.max(0, currentActiveEntryIndex - 1)
 
-      virtuosoRef.current?.scrollIntoView?.({
-        index: nextIndex,
-      })
+      handleScrollTo(nextIndex)
       const nextId = data![nextIndex]
 
       navigate({
         entryId: nextId,
       })
     },
-    { scopes: HotKeyScopeMap.Home, enabled: enabledArrowKey },
+    { scopes: HotKeyScopeMap.Home, enabled: enabledArrowKey, preventDefault: true },
   )
   return null
 })

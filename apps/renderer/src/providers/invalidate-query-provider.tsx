@@ -1,10 +1,11 @@
+import { usePageVisibility } from "@follow/hooks"
+import { IN_ELECTRON } from "@follow/shared/constants"
 import { useQueryClient } from "@tanstack/react-query"
 import { useEffect, useRef } from "react"
 
-import { usePageVisibility } from "~/hooks/common"
 import { appLog } from "~/lib/log"
 
-const slateTime = 600000 // 10min
+const staleTime = 600_000 // 10min
 
 export class ElectronCloseEvent extends Event {
   static type = "electron-close"
@@ -44,13 +45,18 @@ const InvalidateQueryProviderElectron = () => {
   useEffect(() => {
     const handler = () => {
       const now = Date.now()
-      if (!currentTimeRef.current || now - currentTimeRef.current < slateTime) {
+      if (!currentTimeRef.current || now - currentTimeRef.current < staleTime) {
         appLog(
           `Window switch to visible, but skip invalidation, ${currentTimeRef.current ? now - currentTimeRef.current : 0}`,
         )
       } else {
-        appLog("Window switch to visible, invalidate all queries")
-        queryClient.invalidateQueries()
+        appLog("Window switch to visible, invalidate all queries except entries")
+        queryClient.invalidateQueries({
+          predicate(query) {
+            // Ignore entries queries
+            return query.queryKey[0] !== "entries"
+          },
+        })
       }
       currentTimeRef.current = 0
     }
@@ -82,7 +88,7 @@ const InvalidateQueryProviderWebApp = () => {
     }
 
     const now = Date.now()
-    if (now - currentTimeRef.current < slateTime) {
+    if (now - currentTimeRef.current < staleTime) {
       return
     }
 
@@ -96,6 +102,6 @@ const InvalidateQueryProviderWebApp = () => {
   return null
 }
 
-export const InvalidateQueryProvider = window.electron
+export const InvalidateQueryProvider = IN_ELECTRON
   ? InvalidateQueryProviderElectron
   : InvalidateQueryProviderWebApp

@@ -1,37 +1,29 @@
-import { useMutation, useQuery } from "@tanstack/react-query"
-import type { FetchError } from "ofetch"
-import { ofetch } from "ofetch"
-import type { ReactNode } from "react"
+import { isMobile } from "@follow/components/hooks/useMobile.js"
+import { FeedViewType, UserRole } from "@follow/constants"
+import { IN_ELECTRON } from "@follow/shared/constants"
 import { useCallback, useMemo } from "react"
-import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
 
+import { useShowAISummary } from "~/atoms/ai-summary"
+import { useShowAITranslation } from "~/atoms/ai-translation"
 import {
   getReadabilityStatus,
   ReadabilityStatus,
   setReadabilityContent,
   setReadabilityStatus,
 } from "~/atoms/readability"
-import { useIntegrationSettingKey } from "~/atoms/settings/integration"
-import { whoami } from "~/atoms/user"
-import { mountLottie } from "~/components/ui/lottie-container"
-import {
-  SimpleIconsEagle,
-  SimpleIconsInstapaper,
-  SimpleIconsReadwise,
-} from "~/components/ui/platform-icon/icons"
+import { useShowSourceContent } from "~/atoms/source-content"
+import { useUserRole, whoami } from "~/atoms/user"
 import { shortcuts } from "~/constants/shortcuts"
 import { tipcClient } from "~/lib/client"
-import { nextFrame } from "~/lib/dom"
-import { getOS } from "~/lib/utils"
-import StarAnimationUri from "~/lottie/star.lottie?url"
-import type { CombinedEntryModel } from "~/models"
-import { useTipModal } from "~/modules/wallet/hooks"
-import type { FlatEntryModel } from "~/store/entry"
-import { entryActions } from "~/store/entry"
+import { COMMAND_ID } from "~/modules/command/commands/id"
+import { useRunCommandFn } from "~/modules/command/hooks/use-command"
+import type { FollowCommandId } from "~/modules/command/types"
+import { useToolbarOrderMap } from "~/modules/customize-toolbar/hooks"
+import { useEntry } from "~/store/entry"
 import { useFeedById } from "~/store/feed"
+import { useInboxById } from "~/store/inbox"
 
-const absoluteStarAnimationUri = new URL(StarAnimationUri, import.meta.url).href
+import { useRouteParamsSelector } from "./useRouteParams"
 
 export const useEntryReadabilityToggle = ({ id, url }: { id: string; url: string }) =>
   useCallback(async () => {
@@ -68,350 +60,211 @@ export const useEntryReadabilityToggle = ({ id, url }: { id: string; url: string
       })
     }
   }, [id, url])
-export const useCollect = (entry: Nullable<CombinedEntryModel>) => {
-  const { t } = useTranslation()
-  return useMutation({
-    mutationFn: async () => entry && entryActions.markStar(entry.entries.id, true),
 
-    onSuccess: () => {
-      toast.success(t("entry_actions.starred"), {
-        duration: 1000,
-      })
-    },
-  })
+export type EntryActionItem = {
+  id: FollowCommandId
+  onClick: () => void
+  hide?: boolean
+  shortcut?: string
+  active?: boolean
+  disabled?: boolean
 }
 
-export const useUnCollect = (entry: Nullable<CombinedEntryModel>) => {
-  const { t } = useTranslation()
-  return useMutation({
-    mutationFn: async () => entry && entryActions.markStar(entry.entries.id, false),
-
-    onSuccess: () => {
-      toast.success(t("entry_actions.unstarred"), {
-        duration: 1000,
-      })
-    },
-  })
-}
-
-export const useRead = () =>
-  useMutation({
-    mutationFn: async (entry: Nullable<CombinedEntryModel>) =>
-      entry && entryActions.markRead(entry.feeds.id, entry.entries.id, true),
-  })
-export const useUnread = () =>
-  useMutation({
-    mutationFn: async (entry: Nullable<CombinedEntryModel>) =>
-      entry && entryActions.markRead(entry.feeds.id, entry.entries.id, false),
-  })
-
-export const useEntryActions = ({
-  view,
-  entry,
-  type,
-}: {
-  view?: number
-  entry?: FlatEntryModel | null
-  type?: "toolbar" | "entryList"
-}) => {
-  const { t } = useTranslation()
-
-  const checkEagle = useQuery({
-    queryKey: ["check-eagle"],
-    enabled: !!entry?.entries.url && view !== undefined,
-    queryFn: async () => {
-      try {
-        await ofetch("http://localhost:41595")
-        return true
-      } catch (error: unknown) {
-        return (error as FetchError).data?.code === 401
-      }
-    },
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-  })
-
-  const feed = useFeedById(entry?.feedId)
-
-  const populatedEntry = useMemo(() => {
-    if (!entry) return null
-    if (!feed) return null
+export const useEntryActions = ({ entryId, view }: { entryId: string; view?: FeedViewType }) => {
+  const entry = useEntry(entryId)
+  const feed = useFeedById(entry?.feedId, (feed) => {
     return {
-      ...entry,
-      feeds: feed!,
-    } as CombinedEntryModel
-  }, [entry, feed])
-
-  const openTipModal = useTipModal({
-    userId: populatedEntry?.feeds.ownerUserId ?? undefined,
-    feedId: populatedEntry?.feeds.id ?? undefined,
-    entryId: populatedEntry?.entries.id ?? undefined,
+      type: feed.type,
+      ownerUserId: feed.ownerUserId,
+      id: feed.id,
+    }
   })
+  const listId = useRouteParamsSelector((s) => s.listId)
+  const inList = !!listId
+  const inbox = useInboxById(entry?.inboxId)
+  const isInbox = !!inbox
 
-  const collect = useCollect(populatedEntry)
-  const uncollect = useUnCollect(populatedEntry)
-  const read = useRead()
-  const unread = useUnread()
-  const enableEagle = useIntegrationSettingKey("enableEagle")
-  const enableReadwise = useIntegrationSettingKey("enableReadwise")
-  const readwiseToken = useIntegrationSettingKey("readwiseToken")
-  const enableInstapaper = useIntegrationSettingKey("enableInstapaper")
-  const instapaperUsername = useIntegrationSettingKey("instapaperUsername")
-  const instapaperPassword = useIntegrationSettingKey("instapaperPassword")
+  const isShowSourceContent = useShowSourceContent()
+  const isShowAISummary = useShowAISummary()
+  const isShowAITranslation = useShowAITranslation()
 
-  const items = useMemo(() => {
-    if (!populatedEntry || view === undefined) return []
-    const items: {
-      key: string
-      className?: string
-      shortcut?: string
-      name: string
-      icon?: ReactNode
-      hide?: boolean
-      active?: boolean
-      disabled?: boolean
-      onClick: (e: React.MouseEvent<HTMLElement, MouseEvent>) => void
-    }[] = [
+  const runCmdFn = useRunCommandFn()
+  const hasEntry = !!entry
+
+  const userRole = useUserRole()
+
+  const actionConfigs: EntryActionItem[] = useMemo(() => {
+    if (!hasEntry) return []
+    return [
       {
-        name: t("entry_actions.save_media_to_eagle"),
-        icon: <SimpleIconsEagle />,
-        key: "saveToEagle",
-        hide:
-          !enableEagle ||
-          (checkEagle.isLoading ? true : !checkEagle.data) ||
-          !populatedEntry.entries.media?.length,
-        onClick: async () => {
-          if (!populatedEntry.entries.url || !populatedEntry.entries.media?.length) {
-            return
-          }
-          const response = await tipcClient?.saveToEagle({
-            url: populatedEntry.entries.url,
-            mediaUrls: populatedEntry.entries.media.map((m) => m.url),
-          })
-          if (response?.status === "success") {
-            toast.success(t("entry_actions.saved_to_eagle"), {
-              duration: 3000,
-            })
-          } else {
-            toast.error(t("entry_actions.failed_to_save_to_eagle"), {
-              duration: 3000,
-            })
-          }
-        },
+        id: COMMAND_ID.integration.saveToEagle,
+        onClick: runCmdFn(COMMAND_ID.integration.saveToEagle, [{ entryId }]),
       },
       {
-        name: t("entry_actions.save_to_readwise"),
-        icon: <SimpleIconsReadwise />,
-        key: "saveToReadwise",
-        hide: !enableReadwise || !readwiseToken || !populatedEntry.entries.url,
-        onClick: async () => {
-          try {
-            const data = await ofetch("https://readwise.io/api/v3/save/", {
-              method: "POST",
-              headers: {
-                Authorization: `Token ${readwiseToken}`,
-              },
-              body: {
-                url: populatedEntry.entries.url,
-                html: populatedEntry.entries.content || undefined,
-                title: populatedEntry.entries.title || undefined,
-                author: populatedEntry.entries.author || undefined,
-                summary: populatedEntry.entries.description || undefined,
-                published_date: populatedEntry.entries.publishedAt || undefined,
-                image_url: populatedEntry.entries.media?.[0]?.url || undefined,
-                saved_using: "Follow",
-              },
-            })
-            toast.success(
-              <>
-                {t("entry_actions.saved_to_readwise")},{" "}
-                <a target="_blank" className="underline" href={data.url}>
-                  view
-                </a>
-              </>,
-              {
-                duration: 3000,
-              },
-            )
-          } catch {
-            toast.error(t("entry_actions.failed_to_save_to_readwise"), {
-              duration: 3000,
-            })
-          }
-        },
+        id: COMMAND_ID.integration.saveToReadwise,
+        onClick: runCmdFn(COMMAND_ID.integration.saveToReadwise, [{ entryId }]),
       },
       {
-        name: t("entry_actions.save_to_instapaper"),
-        icon: <SimpleIconsInstapaper />,
-        key: "saveToInstapaper",
-        hide:
-          !enableInstapaper ||
-          !instapaperPassword ||
-          !instapaperUsername ||
-          !populatedEntry.entries.url,
-        onClick: async () => {
-          try {
-            const data = await ofetch("https://www.instapaper.com/api/add", {
-              query: {
-                url: populatedEntry.entries.url,
-                title: populatedEntry.entries.title,
-              },
-              method: "POST",
-              headers: {
-                Authorization: `Basic ${btoa(`${instapaperUsername}:${instapaperPassword}`)}`,
-              },
-              parseResponse: JSON.parse,
-            })
-            toast.success(
-              <>
-                {t("entry_actions.saved_to_instapaper")},{" "}
-                <a
-                  target="_blank"
-                  className="underline"
-                  href={`https://www.instapaper.com/read/${data.bookmark_id}`}
-                >
-                  view
-                </a>
-              </>,
-              {
-                duration: 3000,
-              },
-            )
-          } catch {
-            toast.error(t("entry_actions.failed_to_save_to_instapaper"), {
-              duration: 3000,
-            })
-          }
-        },
+        id: COMMAND_ID.integration.saveToInstapaper,
+        onClick: runCmdFn(COMMAND_ID.integration.saveToInstapaper, [{ entryId }]),
       },
       {
-        key: "tip",
+        id: COMMAND_ID.integration.saveToObsidian,
+        onClick: runCmdFn(COMMAND_ID.integration.saveToObsidian, [{ entryId }]),
+      },
+      {
+        id: COMMAND_ID.integration.saveToOutline,
+        onClick: runCmdFn(COMMAND_ID.integration.saveToOutline, [{ entryId }]),
+      },
+      {
+        id: COMMAND_ID.integration.saveToReadeck,
+        onClick: runCmdFn(COMMAND_ID.integration.saveToReadeck, [{ entryId }]),
+      },
+      {
+        id: COMMAND_ID.entry.tip,
+        onClick: runCmdFn(COMMAND_ID.entry.tip, [
+          { entryId, feedId: feed?.id, userId: feed?.ownerUserId },
+        ]),
+        hide: isInbox || feed?.ownerUserId === whoami()?.id,
         shortcut: shortcuts.entry.tip.key,
-        name: t("entry_actions.tip"),
-        className: "i-mgc-power-outline",
-        hide: feed?.ownerUserId === whoami()?.id,
-        onClick: () => {
-          nextFrame(openTipModal)
-        },
       },
       {
-        key: "star",
+        id: COMMAND_ID.entry.star,
+        onClick: runCmdFn(COMMAND_ID.entry.star, [{ entryId, view }]),
+        active: !!entry?.collections,
         shortcut: shortcuts.entry.toggleStarred.key,
-        name: t("entry_actions.star"),
-        className: "i-mgc-star-cute-re",
-        hide: !!populatedEntry.collections,
-        onClick: (e) => {
-          if (type === "toolbar") {
-            mountLottie(absoluteStarAnimationUri, {
-              x: e.clientX - 90,
-              y: e.clientY - 70,
-              height: 126,
-              width: 252,
-            })
-          }
-
-          collect.mutate()
-        },
       },
       {
-        key: "unstar",
-        name: t("entry_actions.unstar"),
-        shortcut: shortcuts.entry.toggleStarred.key,
-        className: "i-mgc-star-cute-fi text-orange-500",
-        hide: !populatedEntry.collections,
-        onClick: () => {
-          uncollect.mutate()
-        },
-      },
-      {
-        key: "copyLink",
-        name: t("entry_actions.copy_link"),
-        className: "i-mgc-link-cute-re",
-        hide: !populatedEntry.entries.url,
+        id: COMMAND_ID.entry.delete,
+        onClick: runCmdFn(COMMAND_ID.entry.delete, [{ entryId }]),
+        hide: !isInbox,
         shortcut: shortcuts.entry.copyLink.key,
-        onClick: () => {
-          if (!populatedEntry.entries.url) return
-          navigator.clipboard.writeText(populatedEntry.entries.url)
-          toast(t("entry_actions.link_copied"), {
-            duration: 1000,
-          })
-        },
       },
       {
-        key: "openInBrowser",
-        name: t("entry_actions.open_in_browser"),
-        shortcut: shortcuts.entry.openInBrowser.key,
-        className: "i-mgc-world-2-cute-re",
-        hide: !populatedEntry.entries.url,
-        onClick: () => {
-          if (!populatedEntry.entries.url) return
-          window.open(populatedEntry.entries.url, "_blank")
-        },
+        id: COMMAND_ID.entry.copyLink,
+        onClick: runCmdFn(COMMAND_ID.entry.copyLink, [{ entryId }]),
+        hide: !entry?.entries.url,
+        shortcut: shortcuts.entry.copyTitle.key,
       },
       {
-        name: t("entry_actions.share"),
-        key: "share",
-        className: getOS() === "macOS" ? `i-mgc-share-3-cute-re` : "i-mgc-share-forward-cute-re",
+        id: COMMAND_ID.entry.openInBrowser,
+        onClick: runCmdFn(COMMAND_ID.entry.openInBrowser, [{ entryId }]),
+      },
+      {
+        id: COMMAND_ID.entry.viewSourceContent,
+        onClick: runCmdFn(COMMAND_ID.entry.viewSourceContent, [{ entryId }]),
+        hide: isMobile() || !entry?.entries.url,
+        active: isShowSourceContent,
+      },
+      {
+        id: COMMAND_ID.entry.toggleAISummary,
+        onClick: runCmdFn(COMMAND_ID.entry.toggleAISummary, []),
+        hide:
+          !!entry?.settings?.summary ||
+          ([FeedViewType.SocialMedia, FeedViewType.Videos] as (number | undefined)[]).includes(
+            entry?.view,
+          ),
+        active: isShowAISummary,
+        disabled: userRole === UserRole.Trial,
+      },
+      {
+        id: COMMAND_ID.entry.toggleAITranslation,
+        onClick: runCmdFn(COMMAND_ID.entry.toggleAITranslation, []),
+        hide:
+          !!entry?.settings?.translation ||
+          ([FeedViewType.SocialMedia, FeedViewType.Videos] as (number | undefined)[]).includes(
+            entry?.view,
+          ),
+        active: isShowAITranslation,
+        disabled: userRole === UserRole.Trial,
+      },
+      {
+        id: COMMAND_ID.entry.share,
+        onClick: runCmdFn(COMMAND_ID.entry.share, [{ entryId }]),
+        hide: !entry?.entries.url || !("share" in navigator || IN_ELECTRON),
         shortcut: shortcuts.entry.share.key,
-        hide: !window.electron && !navigator.share,
-
-        onClick: () => {
-          if (!populatedEntry.entries.url) return
-
-          if (window.electron) {
-            return tipcClient?.showShareMenu(populatedEntry.entries.url)
-          } else {
-            navigator.share({
-              url: populatedEntry.entries.url,
-            })
-          }
-          return
-        },
       },
       {
-        key: "read",
-        name: t("entry_actions.mark_as_read"),
+        id: COMMAND_ID.entry.read,
+        onClick: runCmdFn(COMMAND_ID.entry.read, [{ entryId }]),
+        hide: !hasEntry || !!entry.collections || !!inList,
+        active: !!entry?.read,
         shortcut: shortcuts.entry.toggleRead.key,
-        className: "i-mgc-round-cute-fi",
-        hide: !!(!!populatedEntry.read || populatedEntry.collections),
-        onClick: () => {
-          read.mutate(populatedEntry)
-        },
       },
       {
-        key: "unread",
-        name: t("entry_actions.mark_as_unread"),
-        shortcut: shortcuts.entry.toggleRead.key,
-        className: "i-mgc-round-cute-re",
-        hide: !!(!populatedEntry.read || populatedEntry.collections),
-        onClick: () => {
-          unread.mutate(populatedEntry)
-        },
+        id: COMMAND_ID.settings.customizeToolbar,
+        onClick: runCmdFn(COMMAND_ID.settings.customizeToolbar, []),
       },
-    ]
-
-    return items
+    ].filter((config) => !config.hide)
   }, [
-    populatedEntry,
-    view,
-    t,
-    enableEagle,
-    checkEagle.isLoading,
-    checkEagle.data,
-    enableReadwise,
-    readwiseToken,
-    enableInstapaper,
-    instapaperPassword,
-    instapaperUsername,
+    entry?.collections,
+    entry?.entries.url,
+    entry?.read,
+    entry?.settings?.summary,
+    entry?.settings?.translation,
+    entry?.view,
+    entryId,
+    feed?.id,
     feed?.ownerUserId,
-    openTipModal,
-    collect,
-    uncollect,
-    read,
-    unread,
+    hasEntry,
+    inList,
+    isInbox,
+    isShowAISummary,
+    isShowAITranslation,
+    isShowSourceContent,
+    runCmdFn,
+    userRole,
+    view,
   ])
 
+  return actionConfigs
+}
+
+export const useSortedEntryActions = ({
+  entryId,
+  view,
+}: {
+  entryId: string
+  view?: FeedViewType
+}) => {
+  const entryActions = useEntryActions({ entryId, view })
+  const orderMap = useToolbarOrderMap()
+  const mainAction = useMemo(
+    () =>
+      entryActions
+        .filter((item) => {
+          const order = orderMap.get(item.id)
+          if (!order) return false
+          return order.type === "main"
+        })
+        .sort((a, b) => {
+          const orderA = orderMap.get(a.id)?.order || 0
+          const orderB = orderMap.get(b.id)?.order || 0
+          return orderA - orderB
+        }),
+    [entryActions, orderMap],
+  )
+
+  const moreAction = useMemo(
+    () =>
+      entryActions
+        .filter((item) => {
+          const order = orderMap.get(item.id)
+          // If the order is not set, it should be in the "more" menu
+          if (!order) return true
+          return order.type !== "main"
+        })
+        // .filter((item) => item.id !== COMMAND_ID.settings.customizeToolbar)
+        .sort((a, b) => {
+          const orderA = orderMap.get(a.id)?.order || Infinity
+          const orderB = orderMap.get(b.id)?.order || Infinity
+          return orderA - orderB
+        }),
+    [entryActions, orderMap],
+  )
+
   return {
-    items,
+    mainAction,
+    moreAction,
   }
 }

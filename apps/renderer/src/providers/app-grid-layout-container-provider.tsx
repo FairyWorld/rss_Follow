@@ -1,6 +1,8 @@
-import { throttle } from "lodash-es"
+import { throttle } from "es-toolkit/compat"
 import type { FC, PropsWithChildren } from "react"
 import { createContext, useContext, useLayoutEffect, useRef, useState } from "react"
+
+import { APP_GRID_CONTAINER_ID } from "~/constants/dom"
 
 const AppLayoutGridContainerWidthContext = createContext<number>(0)
 
@@ -28,14 +30,11 @@ export const AppLayoutGridContainerProvider: FC<PropsWithChildren> = ({ children
 
   return (
     <AppLayoutGridContainerWidthContext.Provider value={width}>
-      <div ref={ref} className="contents">
+      <div ref={ref} className="relative z-0 contents" id={APP_GRID_CONTAINER_ID}>
         {children}
       </div>
     </AppLayoutGridContainerWidthContext.Provider>
   )
 }
 
-export const useAppLayoutGridContainerWidth = () => {
-  const width = useContext(AppLayoutGridContainerWidthContext)
-  return width
-}
+export const useAppLayoutGridContainerWidth = () => useContext(AppLayoutGridContainerWidthContext)

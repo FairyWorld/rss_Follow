@@ -1,25 +1,22 @@
-import { env } from "@follow/shared/env"
-import { useDebounceCallback } from "usehooks-ts"
+import { useMobile } from "@follow/components/hooks/useMobile.js"
+import { EllipsisHorizontalTextWithTooltip } from "@follow/components/ui/typography/index.js"
+import { clsx, cn, isSafari } from "@follow/utils/utils"
+import { useMemo } from "react"
 
 import { AudioPlayer, useAudioPlayerAtomSelector } from "~/atoms/player"
-import { FeedIcon } from "~/components/feed-icon"
-import { FollowIcon } from "~/components/icons/follow"
-import { Button } from "~/components/ui/button"
+import { useRealInWideMode, useUISettingKey } from "~/atoms/settings/ui"
 import { RelativeTime } from "~/components/ui/datetime"
 import { Media } from "~/components/ui/media"
-import { useModalStack } from "~/components/ui/modal"
 import { FEED_COLLECTION_LIST } from "~/constants"
 import { useAsRead } from "~/hooks/biz/useAsRead"
 import { useRouteParamsSelector } from "~/hooks/biz/useRouteParams"
-import { cn, isSafari } from "~/lib/utils"
-import { FeedForm } from "~/modules/discover/feed-form"
 import { EntryTranslation } from "~/modules/entry-column/translation"
-import { Queries } from "~/queries"
+import { FeedIcon } from "~/modules/feed/feed-icon"
+import { FeedTitle } from "~/modules/feed/feed-title"
 import { useEntry } from "~/store/entry/hooks"
 import { getPreferredTitle, useFeedById } from "~/store/feed"
-import { useSubscriptionStore } from "~/store/subscription"
+import { useInboxById } from "~/store/inbox"
 
-import { ReactVirtuosoItemPlaceholder } from "../../../components/ui/placeholder"
 import { StarIcon } from "../star-icon"
 import type { UniversalItemProps } from "../types"
 
@@ -27,60 +24,104 @@ export function ListItem({
   entryId,
   entryPreview,
   translation,
-  withDetails,
-  withAudio,
-  withFollow,
+  simple,
 }: UniversalItemProps & {
-  withDetails?: boolean
-  withAudio?: boolean
-  withFollow?: boolean
+  simple?: boolean
 }) {
+  const isMobile = useMobile()
   const entry = useEntry(entryId) || entryPreview
 
   const asRead = useAsRead(entry)
 
   const inInCollection = useRouteParamsSelector((s) => s.feedId === FEED_COLLECTION_LIST)
 
-  const feed = useFeedById(entry?.feedId) || entryPreview?.feeds
+  const feed =
+    useFeedById(entry?.feedId, (feed) => {
+      return {
+        type: feed.type,
+        ownerUserId: feed.ownerUserId,
+        id: feed.id,
+        title: feed.title,
+        url: (feed as any).url || "",
+        image: feed.image,
+        siteUrl: feed.siteUrl,
+      }
+    }) || entryPreview?.feeds
 
-  const handlePrefetchEntry = useDebounceCallback(
-    () => {
-      Queries.entries.byId(entryId).prefetch()
-    },
-    300,
-    { leading: false },
-  )
+  const inbox = useInboxById(entry?.inboxId)
 
-  const isSubscription = withFollow && entry?.entries.url?.startsWith(`${env.VITE_WEB_URL}/feed/`)
-  const feedId = isSubscription
-    ? entry?.entries.url?.replace(`${env.VITE_WEB_URL}/feed/`, "")
-    : undefined
-  const isFollowed = !!useSubscriptionStore((state) => feedId && state.data[feedId])
-  const { present } = useModalStack()
+  const settingWideMode = useRealInWideMode()
+  const thumbnailRatio = useUISettingKey("thumbnailRatio")
+  const rid = `list-item-${entryId}`
+
+  const lineClamp = useMemo(() => {
+    const envIsSafari = isSafari()
+    let lineClampTitle = settingWideMode ? 1 : 2
+    let lineClampDescription = settingWideMode ? 1 : 2
+
+    if (translation?.title && !simple) {
+      lineClampTitle += 1
+    }
+    if (translation?.description && !simple) {
+      lineClampDescription += 1
+    }
+
+    // for tailwind
+    // line-clamp-[1] line-clamp-[2] line-clamp-[3] line-clamp-[4] line-clamp-[5] line-clamp-[6] line-clamp-[7] line-clamp-[8]
+
+    // FIXME: Safari bug, not support line-clamp cross elements
+    return {
+      global: !envIsSafari
+        ? `line-clamp-[${simple ? lineClampTitle : lineClampTitle + lineClampDescription}]`
+        : "",
+      title: envIsSafari ? `line-clamp-[${lineClampTitle}]` : "",
+      description: envIsSafari ? `line-clamp-[${lineClampDescription}]` : "",
+    }
+  }, [settingWideMode])
 
   // NOTE: prevent 0 height element, react virtuoso will not stop render any more
-  if (!entry || !feed) return <ReactVirtuosoItemPlaceholder />
+  if (!entry || !(feed || inbox)) return null
 
   const displayTime = inInCollection ? entry.collections?.createdAt : entry.entries.publishedAt
-  const envIsSafari = isSafari()
+
+  const related = feed || inbox
+
+  const hasAudio = simple ? false : !!entry.entries?.attachments?.[0]?.url
+  const hasMedia = simple ? false : !!entry.entries?.media?.[0]?.url
+
+  const marginWidth = 8 * (isMobile ? 1.125 : 1)
+  // calculate the max width to have a correct truncation
+  // FIXME: this is not easy to maintain, need to refactor
+  const feedIconWidth = 20 + marginWidth
+  const audioCoverWidth = settingWideMode ? 65 : 80 + marginWidth
+  const mediaWidth = (settingWideMode ? 48 : 80) * (isMobile ? 1.125 : 1) + marginWidth
+
+  let savedWidth = 0
+
+  savedWidth += feedIconWidth
+
+  if (hasAudio) {
+    savedWidth += audioCoverWidth
+  }
+  if (hasMedia && !hasAudio) {
+    savedWidth += mediaWidth
+  }
+
   return (
     <div
-      onMouseEnter={handlePrefetchEntry}
-      onMouseLeave={handlePrefetchEntry.cancel}
       className={cn(
-        "group relative flex cursor-menu py-4 pl-3 pr-2",
+        "group relative flex cursor-menu pl-3 pr-2",
         !asRead &&
           "before:absolute before:-left-0.5 before:top-[1.4375rem] before:block before:size-2 before:rounded-full before:bg-accent",
+        settingWideMode ? "py-3" : "py-4",
       )}
     >
-      {!withAudio && <FeedIcon feed={feed} fallback entry={entry.entries} />}
+      <FeedIcon feed={related} fallback entry={entry.entries} />
       <div
-        className={cn(
-          "-mt-0.5 flex-1 text-sm leading-tight",
-
-          // FIXME: Safari bug, not support line-clamp cross elements
-          !envIsSafari && "line-clamp-4",
-        )}
+        className={cn("-mt-0.5 flex-1 text-sm leading-tight", lineClamp.global)}
+        style={{
+          maxWidth: `calc(100% - ${savedWidth}px)`,
+        }}
       >
         <div
           className={cn(
@@ -89,7 +130,13 @@ export function ListItem({
             entry.collections && "text-zinc-600 dark:text-zinc-500",
           )}
         >
-          <span className="truncate">{getPreferredTitle(feed)}</span>
+          <EllipsisHorizontalTextWithTooltip className="truncate">
+            <FeedTitle
+              feed={related}
+              title={getPreferredTitle(related, entry.entries)}
+              className="space-x-0.5"
+            />
+          </EllipsisHorizontalTextWithTooltip>
           <span>·</span>
           <span className="shrink-0">{!!displayTime && <RelativeTime date={displayTime} />}</span>
         </div>
@@ -97,28 +144,25 @@ export function ListItem({
           className={cn(
             "relative my-0.5 break-words",
             !!entry.collections && "pr-5",
-            entry.entries.title ? (withDetails || withAudio) && "font-medium" : "text-[13px]",
+            entry.entries.title ? "font-medium" : "text-[13px]",
           )}
         >
           {entry.entries.title ? (
             <EntryTranslation
-              useOverlay
-              side="top"
-              className={envIsSafari ? "line-clamp-2 break-all" : undefined}
+              className={cn("hyphens-auto", lineClamp.title)}
               source={entry.entries.title}
               target={translation?.title}
             />
           ) : (
             <EntryTranslation
-              useOverlay
-              side="top"
+              className={cn("hyphens-auto", lineClamp.description)}
               source={entry.entries.description}
               target={translation?.description}
             />
           )}
-          {!!entry.collections && <StarIcon />}
+          {!!entry.collections && <StarIcon className="absolute right-0 top-0" />}
         </div>
-        {withDetails && (
+        {!simple && (
           <div
             className={cn(
               "text-[13px]",
@@ -128,9 +172,7 @@ export function ListItem({
             )}
           >
             <EntryTranslation
-              useOverlay
-              side="top"
-              className={envIsSafari ? "line-clamp-2 break-all" : undefined}
+              className={cn("break-all", lineClamp.description)}
               source={entry.entries.description}
               target={translation?.description}
             />
@@ -138,60 +180,57 @@ export function ListItem({
         )}
       </div>
 
-      {feedId && !isFollowed && (
-        <Button
-          onClick={(e) => {
-            e.stopPropagation()
-            e.preventDefault()
-            present({
-              title: `${APP_NAME}`,
-              clickOutsideToDismiss: true,
-              content: ({ dismiss }) => <FeedForm asWidget id={feedId} onSuccess={dismiss} />,
-            })
-          }}
-          variant="outline"
-          className="h-8"
-        >
-          <>
-            <FollowIcon className="mr-1 size-3" />
-            {APP_NAME}
-          </>
-        </Button>
-      )}
-
-      {withAudio && entry.entries?.attachments?.[0].url && (
+      {hasAudio && (
         <AudioCover
           entryId={entryId}
-          src={entry.entries?.attachments?.[0].url}
+          src={entry.entries!.attachments![0]!.url}
           durationInSeconds={Number.parseInt(
-            String(entry.entries?.attachments?.[0].duration_in_seconds ?? 0),
+            String(entry.entries!.attachments![0]!.duration_in_seconds ?? 0),
             10,
           )}
           feedIcon={
             <FeedIcon
-              fallback={false}
-              feed={feed}
+              fallback={true}
+              fallbackElement={
+                <div
+                  className={clsx(
+                    "bg-theme-placeholder-image",
+                    settingWideMode ? "size-[65px]" : "size-[80px]",
+                    "rounded",
+                  )}
+                />
+              }
+              feed={feed || inbox}
               entry={entry.entries}
-              size={80}
+              size={settingWideMode ? 65 : 80}
               className="m-0 rounded"
               useMedia
+              noMargin
             />
           }
         />
       )}
 
-      {withDetails && entry.entries.media?.[0] && (
+      {!simple && !hasAudio && entry.entries.media?.[0] && (
         <Media
           thumbnail
           src={entry.entries.media[0].url}
           type={entry.entries.media[0].type}
           previewImageUrl={entry.entries.media[0].preview_image_url}
-          className="ml-2 size-20 shrink-0"
+          className={cn(
+            "center ml-2 flex shrink-0 rounded",
+            settingWideMode ? "size-12" : "size-20",
+          )}
+          mediaContainerClassName={"w-auto h-auto rounded"}
           loading="lazy"
+          key={`${rid}-media-${thumbnailRatio}`}
           proxy={{
             width: 160,
-            height: 160,
+            height: thumbnailRatio === "square" ? 160 : 0,
           }}
+          height={entry.entries.media[0].height}
+          width={entry.entries.media[0].width}
+          blurhash={entry.entries.media[0].blurhash}
         />
       )}
     </div>
@@ -209,13 +248,15 @@ function AudioCover({
   durationInSeconds?: number
   feedIcon: React.ReactNode
 }) {
+  const isMobile = useMobile()
   const playStatus = useAudioPlayerAtomSelector((playerValue) =>
     playerValue.src === src && playerValue.show ? playerValue.status : false,
   )
 
   const estimatedMins = durationInSeconds ? Math.floor(durationInSeconds / 60) : undefined
 
-  const handleClickPlay = () => {
+  const handleClickPlay = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isMobile) e.stopPropagation()
     if (!playStatus) {
       // switch this to play
       AudioPlayer.mount({
@@ -238,6 +279,7 @@ function AudioCover({
         className={cn(
           "center absolute inset-0 w-full transition-all duration-200 ease-in-out group-hover:-translate-y-2 group-hover:opacity-100",
           playStatus ? "opacity-100" : "opacity-0",
+          isMobile && "-translate-y-2 opacity-100",
         )}
         onClick={handleClickPlay}
       >
@@ -256,9 +298,19 @@ function AudioCover({
       </div>
 
       {!!estimatedMins && (
-        <div className="absolute bottom-0 w-full overflow-hidden rounded-b-sm text-center ">
-          <div className="absolute left-0 top-0 size-full bg-white/50 opacity-0 duration-200 group-hover:opacity-100 dark:bg-neutral-900/70" />
-          <div className="text-[13px] opacity-0 backdrop-blur-none duration-200 group-hover:opacity-100 group-hover:backdrop-blur-sm">
+        <div className="absolute bottom-0 w-full overflow-hidden rounded-b-sm text-center">
+          <div
+            className={cn(
+              "absolute left-0 top-0 size-full bg-white/50 opacity-0 duration-200 group-hover:opacity-100 dark:bg-neutral-900/70",
+              isMobile && "opacity-100",
+            )}
+          />
+          <div
+            className={cn(
+              "text-[13px] opacity-0 backdrop-blur-none duration-200 group-hover:opacity-100 group-hover:backdrop-blur-sm",
+              isMobile && "opacity-100 backdrop-blur-sm",
+            )}
+          >
             {formatEstimatedMins(estimatedMins)}
           </div>
         </div>

@@ -1,20 +1,20 @@
+import { AutoResizeHeight } from "@follow/components/ui/auto-resize-height/index.jsx"
+import { Button } from "@follow/components/ui/button/index.js"
+import { Card, CardHeader } from "@follow/components/ui/card/index.jsx"
+import { LoadingCircle } from "@follow/components/ui/loading/index.jsx"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@follow/components/ui/tabs/index.jsx"
+import type { FeedModel } from "@follow/models/types"
 import type { FC } from "react"
 import { useEffect } from "react"
 import { Trans, useTranslation } from "react-i18next"
 
-import { FollowSummary } from "~/components/feed-summary"
-import { AutoResizeHeight } from "~/components/ui/auto-resize-height"
-import { Button } from "~/components/ui/button"
-import { Card, CardHeader } from "~/components/ui/card"
-import { CopyButton, ShikiHighLighter } from "~/components/ui/code-highlighter"
+import { CopyButton } from "~/components/ui/button/CopyButton"
+import { ShikiHighLighter } from "~/components/ui/code-highlighter"
 import { useShikiDefaultTheme } from "~/components/ui/code-highlighter/shiki/hooks"
-import { LoadingCircle } from "~/components/ui/loading"
-import { useCurrentModal } from "~/components/ui/modal"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs"
+import { useCurrentModal } from "~/components/ui/modal/stacked/hooks"
 import { useAuthQuery } from "~/hooks/common"
-import type { FeedModel } from "~/models"
-import { Queries } from "~/queries"
-import { useClaimFeedMutation } from "~/queries/feed"
+import { FollowSummary } from "~/modules/feed/feed-summary"
+import { feed as feedQuery, useClaimFeedMutation } from "~/queries/feed"
 import { useFeedById } from "~/store/feed"
 
 export const FeedClaimModalContent: FC<{
@@ -26,7 +26,7 @@ export const FeedClaimModalContent: FC<{
     data: claimMessage,
     isLoading,
     error,
-  } = useAuthQuery(Queries.feed.claimMessage({ feedId }), {
+  } = useAuthQuery(feedQuery.claimMessage({ feedId }), {
     enabled: !!feed,
   })
   const { setClickOutSideToDismiss } = useCurrentModal()
@@ -43,7 +43,7 @@ export const FeedClaimModalContent: FC<{
 
   if (isLoading) {
     return (
-      <div className="center h-32 w-[650px]">
+      <div className="center h-32 lg:w-[650px]">
         <LoadingCircle size="large" />
       </div>
     )
@@ -54,7 +54,7 @@ export const FeedClaimModalContent: FC<{
   }
 
   return (
-    <div className="w-[650px] max-w-full">
+    <div className="mx-auto w-full max-w-[650px]">
       <Card className="mb-2">
         <CardHeader>
           <FollowSummary feed={feed} />
@@ -79,10 +79,8 @@ export const FeedClaimModalContent: FC<{
             <BaseCodeBlock>{claimMessage?.data.content || ""}</BaseCodeBlock>
           </TabsContent>
           <TabsContent className="mt-0 pt-3" value="description">
-            <p className="mb-2 leading-none">
-              {t("feed_claim_modal.description_current")}
-              <span className="ml-2 text-xs text-zinc-500">{feed.description}</span>
-            </p>
+            <p className="mb-2 leading-none">{t("feed_claim_modal.description_current")}</p>
+            <p className="my-2 text-xs text-zinc-500">{feed.description}</p>
             <Trans
               i18nKey="feed_claim_modal.description_instructions"
               components={{ code: <code className="text-sm">{"<description />"}</code> }}

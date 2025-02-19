@@ -1,14 +1,15 @@
+import { IconButton } from "@follow/components/ui/button/index.js"
+import { Checkbox } from "@follow/components/ui/checkbox/index.jsx"
+import { Popover, PopoverContent, PopoverTrigger } from "@follow/components/ui/popover/index.jsx"
+import { getStorageNS } from "@follow/utils/ns"
+import { parseSafeUrl } from "@follow/utils/utils"
 import { Label } from "@radix-ui/react-label"
 import { PopoverPortal } from "@radix-ui/react-popover"
 import { atomWithStorage } from "jotai/utils"
 import { forwardRef, Fragment, useState } from "react"
 
 import { useGeneralSettingKey, useGeneralSettingValue } from "~/atoms/settings/general"
-import { IconButton } from "~/components/ui/button"
-import { Checkbox } from "~/components/ui/checkbox"
-import { Popover, PopoverContent, PopoverTrigger } from "~/components/ui/popover"
 import { jotaiStore } from "~/lib/jotai"
-import { getStorageNS } from "~/lib/ns"
 import { withSettingEnabled } from "~/modules/settings/helper/withSettingEnable"
 
 const TrustedKey = getStorageNS("trusted-external-link")
@@ -37,11 +38,8 @@ const trustedDefaultLinks = new Set([
 ])
 
 const getURLDomain = (url: string) => {
-  if (URL.canParse(url)) {
-    const urlObj = new URL(url)
-    return urlObj.hostname
-  }
-  return null
+  const urlObj = parseSafeUrl(url)
+  return urlObj?.hostname ?? null
 }
 
 const WarnGoToExternalLinkImpl = forwardRef<

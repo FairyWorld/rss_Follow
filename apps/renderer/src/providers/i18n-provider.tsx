@@ -1,3 +1,4 @@
+import { EventBus } from "@follow/utils/event-bus"
 import i18next from "i18next"
 import LanguageDetector from "i18next-browser-languagedetector"
 import { useAtom } from "jotai"
@@ -9,7 +10,6 @@ import { currentSupportedLanguages } from "~/@types/constants"
 import { getGeneralSettings, setGeneralSetting } from "~/atoms/settings/general"
 import { I18N_LOCALE_KEY } from "~/constants"
 import { i18nAtom } from "~/i18n"
-import { EventBus } from "~/lib/event-bus"
 
 export const I18nProvider: FC<PropsWithChildren> = ({ children }) => {
   const [currentI18NInstance, update] = useAtom(i18nAtom)
@@ -38,7 +38,7 @@ export const I18nProvider: FC<PropsWithChildren> = ({ children }) => {
     })
     const userLang = languageDetector.detect()
     if (!userLang) return
-    const firstUserLang = Array.isArray(userLang) ? userLang[0] : userLang
+    const firstUserLang = Array.isArray(userLang) ? userLang[0]! : userLang
     if (currentSupportedLanguages.includes(firstUserLang)) {
       setGeneralSetting("language", firstUserLang)
     }

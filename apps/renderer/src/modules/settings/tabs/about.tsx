@@ -1,24 +1,29 @@
-import { license, repository } from "@pkg"
+import { Logo } from "@follow/components/icons/logo.jsx"
+import { Button } from "@follow/components/ui/button/index.js"
+import { styledButtonVariant } from "@follow/components/ui/button/variants.js"
+import { Divider } from "@follow/components/ui/divider/index.js"
+import { getCurrentEnvironment } from "@follow/utils/environment"
+import PKG, { repository } from "@pkg"
+import { useQuery } from "@tanstack/react-query"
 import { Trans, useTranslation } from "react-i18next"
 
-import { Logo } from "~/components/icons/logo"
-import { Button } from "~/components/ui/button"
-import { styledButtonVariant } from "~/components/ui/button/variants"
-import { CopyButton } from "~/components/ui/code-highlighter"
-import { Divider } from "~/components/ui/divider"
+import { CopyButton } from "~/components/ui/button/CopyButton"
 import { SocialMediaLinks } from "~/constants/social"
-import { getCurrentEnvironment } from "~/lib/environment"
+import { tipcClient } from "~/lib/client"
 import { getNewIssueUrl } from "~/lib/issues"
-
-import { SettingsTitle } from "../title"
 
 export const SettingAbout = () => {
   const { t } = useTranslation("settings")
   const currentEnvironment = getCurrentEnvironment().join("\n")
+  const { data: appVersion } = useQuery({
+    queryKey: ["appVersion"],
+    queryFn: () => tipcClient?.getAppVersion() || "",
+  })
+
+  const rendererVersion = PKG.version
 
   return (
     <div>
-      <SettingsTitle />
       <section className="mt-4">
         <div className="flex gap-3">
           <Logo className="size-[52px]" />
@@ -27,9 +32,23 @@ export const SettingAbout = () => {
             <div className="text-lg font-bold">
               {APP_NAME} {!import.meta.env.PROD ? `(${import.meta.env.MODE})` : ""}
             </div>
-            <div className="flex items-center gap-2">
-              <span className="rounded bg-muted px-2 py-1 text-xs">{APP_VERSION}</span>
-              <CopyButton value={currentEnvironment} className="p-1 [&_i]:size-2.5" />
+            <div className="flex flex-wrap items-center gap-2">
+              {appVersion && (
+                <span className="rounded bg-muted px-2 py-1 text-xs">app: {appVersion}</span>
+              )}
+              {rendererVersion && (
+                <span className="rounded bg-muted px-2 py-1 text-xs">
+                  renderer: {rendererVersion}
+                </span>
+              )}
+              <CopyButton
+                value={
+                  rendererVersion
+                    ? `${currentEnvironment}\n**Renderer**: ${rendererVersion}`
+                    : currentEnvironment
+                }
+                className="border-0 bg-transparent p-1 text-foreground/80 hover:bg-theme-item-hover hover:text-foreground active:bg-theme-item-active [&_i]:size-3"
+              />
             </div>
           </div>
 
@@ -46,7 +65,7 @@ export const SettingAbout = () => {
         </div>
 
         <p className="mt-6 text-balance text-sm">
-          {t("about.licenseInfo", { appName: APP_NAME, license })}
+          {t("about.licenseInfo", { appName: APP_NAME, currentYear: new Date().getFullYear() })}
         </p>
         <p className="mt-3 text-balance text-sm">
           <Trans
@@ -77,7 +96,7 @@ export const SettingAbout = () => {
               OpenIssueLink: (
                 <a
                   className="inline-flex cursor-pointer items-center gap-1 hover:underline"
-                  href={getNewIssueUrl()}
+                  href={getNewIssueUrl({ template: "feature_request.yml" })}
                   target="_blank"
                 >
                   open an issue
@@ -94,23 +113,19 @@ export const SettingAbout = () => {
         <h2 className="text-base font-semibold">{t("about.socialMedia")}</h2>
         <div className="mt-2 flex flex-wrap gap-2">
           {SocialMediaLinks.map((link) => (
-            <span
+            <a
+              href={link.url}
               key={link.url}
               className={styledButtonVariant({
                 variant: "outline",
-                className: "flex-1",
+                className: "flex-1 gap-1",
               })}
+              target="_blank"
+              rel="noreferrer"
             >
-              <a
-                href={link.url}
-                className="center flex w-full gap-1"
-                target="_blank"
-                rel="noreferrer"
-              >
-                <i className={link.icon} />
-                {link.label}
-              </a>
-            </span>
+              <i className={link.icon} />
+              {link.label}
+            </a>
           ))}
         </div>
       </section>

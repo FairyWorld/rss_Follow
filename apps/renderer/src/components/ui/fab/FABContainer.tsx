@@ -1,18 +1,17 @@
+import { RootPortal } from "@follow/components/ui/portal/index.jsx"
+import { useTypeScriptHappyCallback } from "@follow/hooks"
+import { cn } from "@follow/utils/utils"
 import clsx from "clsx"
 import { typescriptHappyForwardRef } from "foxact/typescript-happy-forward-ref"
 import type { HTMLMotionProps } from "framer-motion"
 import { AnimatePresence } from "framer-motion"
 import { atom, useAtomValue } from "jotai"
-import type React from "react"
+import type * as React from "react"
 import type { JSX, PropsWithChildren, ReactNode } from "react"
 import { useId } from "react"
 
 import { m } from "~/components/common/Motion"
-import { useTypeScriptHappyCallback } from "~/hooks/common"
 import { jotaiStore } from "~/lib/jotai"
-import { cn } from "~/lib/utils"
-
-import { RootPortal } from "../portal"
 
 const fabContainerElementAtom = atom(null as HTMLDivElement | null)
 
@@ -44,6 +43,10 @@ export const FABBase = typescriptHappyForwardRef(
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
+            transition={{
+              duration: 0.2,
+              ease: "easeInOut",
+            }}
             ref={ref}
             aria-label="Floating action button"
             className={cn(
@@ -52,8 +55,6 @@ export const FABBase = typescriptHappyForwardRef(
               "outline-accent hover:opacity-100 focus:opacity-100 focus:outline-none",
               "rounded-xl border border-zinc-400/20 backdrop-blur-lg dark:border-zinc-500/30 dark:text-zinc-200",
               "bg-zinc-50/80 shadow-lg dark:bg-neutral-900/80",
-              "transition-all duration-500 ease-in-out",
-
               className,
             )}
             {...rest}

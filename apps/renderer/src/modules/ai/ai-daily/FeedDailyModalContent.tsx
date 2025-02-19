@@ -1,9 +1,9 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs"
-import { FeedViewType } from "~/lib/enum"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@follow/components/ui/tabs/index.jsx"
+import { FeedViewType } from "@follow/constants"
 
 import { DayOf } from "./constants"
 import { DailyReportModalContent, DailyReportTitle } from "./daily"
-import { useParseDailyDate } from "./hooks"
+import { useParseDailyDate } from "./useParseDailyDate"
 
 const tabs = [DayOf.Today, DayOf.Yesterday]
 
@@ -21,9 +21,13 @@ export const FeedDailyModalContent = () => {
         ))}
       </TabsList>
 
-      <div className="flex grow flex-col items-center overflow-auto">
+      <div className="-mx-2 flex grow flex-col items-center overflow-auto lg:mx-0">
         {tabs.map((tab: any) => (
-          <TabsContent key={tab} value={tab}>
+          <TabsContent
+            key={tab}
+            value={tab}
+            className="flex grow flex-col data-[state=inactive]:hidden"
+          >
             <DailyReportModalContent
               view={FeedViewType.SocialMedia}
               {...(tab === DayOf.Today ? today : yesterday)}

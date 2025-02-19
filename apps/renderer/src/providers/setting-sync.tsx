@@ -1,3 +1,4 @@
+import { isMobile } from "@follow/components/hooks/useMobile.js"
 import i18next from "i18next"
 import { useEffect, useInsertionEffect, useLayoutEffect } from "react"
 
@@ -5,7 +6,7 @@ import { useGeneralSettingKey } from "~/atoms/settings/general"
 import { useUISettingValue } from "~/atoms/settings/ui"
 import { I18N_LOCALE_KEY } from "~/constants"
 import { useReduceMotion } from "~/hooks/biz/useReduceMotion"
-import { useSyncThemeark } from "~/hooks/common"
+import { useSyncTheme } from "~/hooks/common"
 import { langChain } from "~/i18n"
 import { tipcClient } from "~/lib/client"
 import { loadLanguageAndApply } from "~/lib/load-language"
@@ -13,10 +14,11 @@ import { feedUnreadActions } from "~/store/unread"
 
 const useUISettingSync = () => {
   const setting = useUISettingValue()
-  useSyncThemeark()
+  const mobile = isMobile()
+  useSyncTheme()
   useInsertionEffect(() => {
     const root = document.documentElement
-    root.style.fontSize = `${setting.uiTextSize}px`
+    root.style.fontSize = `${setting.uiTextSize * (mobile ? 1.125 : 1)}px`
   }, [setting.uiTextSize])
 
   useInsertionEffect(() => {
@@ -44,12 +46,6 @@ const useUISettingSync = () => {
     }
     return
   }, [setting.showDockBadge])
-
-  useEffect(() => {
-    if (setting.voice) {
-      tipcClient?.setVoice(setting.voice)
-    }
-  }, [setting.voice])
 }
 
 const useUXSettingSync = () => {
@@ -78,9 +74,14 @@ const useLanguageSync = () => {
     }
   }, [language])
 }
+const useGeneralSettingSync = () => {
+  useGeneralSettingKey("voice")
+}
+
 export const SettingSync = () => {
   useUISettingSync()
   useUXSettingSync()
   useLanguageSync()
+  useGeneralSettingSync()
   return null
 }

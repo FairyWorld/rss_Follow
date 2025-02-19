@@ -1,4 +1,5 @@
-import { LoadingCircle } from "~/components/ui/loading"
+import { LoadingCircle } from "@follow/components/ui/loading/index.jsx"
+
 import { useAuthQuery } from "~/hooks/common"
 import { Queries } from "~/queries"
 
@@ -26,11 +27,11 @@ export function DiscoverUser() {
 
   return (
     <>
-      {data?.follow.routes && (
-        <div className="w-[512px]">
+      {data?.follow!.routes && (
+        <div className="w-full max-w-[540px]">
           <DiscoverFeedForm
             routePrefix="follow"
-            route={data.follow.routes[Object.keys(data.follow.routes)[0]]}
+            route={data.follow.routes[Object.keys(data.follow.routes)[0]!]!}
             noDescription
             submitButtonClassName="justify-center"
           />

@@ -1,6 +1,8 @@
 export interface GeneralSettings {
   appLaunchOnStartup: boolean
   language: string
+  translationLanguage: string
+  startupScreen: "subscription" | "timeline"
   dataPersist: boolean
   sendAnonymousData: boolean
   unreadOnly: boolean
@@ -9,6 +11,17 @@ export interface GeneralSettings {
   renderMarkUnread: boolean
   groupByDate: boolean
   jumpOutLinkWarn: boolean
+  // TTS
+  voice: string
+  autoGroup: boolean
+  /**
+   * Top timeline for mobile
+   */
+  showQuickTimeline: boolean
+  /**
+   * Auto expand long social media
+   */
+  autoExpandLongSocialMedia: boolean
 }
 
 export interface UISettings {
@@ -16,6 +29,8 @@ export interface UISettings {
   feedColWidth: number
   opaqueSidebar: boolean
   sidebarShowUnreadCount: boolean
+  hideExtraBadge: boolean
+  thumbnailRatio: "square" | "original"
   uiTextSize: number
   showDockBadge: boolean
   modalOverlay: boolean
@@ -25,24 +40,54 @@ export interface UISettings {
   usePointerCursor: boolean | null
   uiFontFamily: string
   readerFontFamily: string
+  // Content
   readerRenderInlineStyle: boolean
   codeHighlightThemeLight: string
   codeHighlightThemeDark: string
   guessCodeLanguage: boolean
+  hideRecentReader: boolean
+  customCSS: string
 
   // view
   pictureViewMasonry: boolean
   pictureViewFilterNoImage: boolean
+  wideMode: boolean
+  contentFontSize: number
+  dateFormat: string
+  contentLineHeight: number
 
-  // tts
-  voice: string
+  // Action Order
+  toolbarOrder: {
+    main: (string | number)[]
+    more: (string | number)[]
+  }
 }
 
 export interface IntegrationSettings {
+  // eagle
   enableEagle: boolean
+
+  // readwise
   enableReadwise: boolean
   readwiseToken: string
+
+  // instapaper
   enableInstapaper: boolean
   instapaperUsername: string
   instapaperPassword: string
+
+  // obsidian
+  enableObsidian: boolean
+  obsidianVaultPath: string
+
+  // outline
+  enableOutline: boolean
+  outlineEndpoint: string
+  outlineToken: string
+  outlineCollection: string
+
+  // readeck
+  enableReadeck: boolean
+  readeckEndpoint: string
+  readeckToken: string
 }

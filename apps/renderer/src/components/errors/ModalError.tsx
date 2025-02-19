@@ -1,3 +1,4 @@
+import { Button } from "@follow/components/ui/button/index.js"
 import type { FC } from "react"
 
 import { attachOpenInEditor } from "~/lib/dev"
@@ -5,11 +6,10 @@ import { attachOpenInEditor } from "~/lib/dev"
 import type { AppErrorFallbackProps } from "../common/AppErrorBoundary"
 import { FeedbackIssue } from "../common/ErrorElement"
 import { m } from "../common/Motion"
-import { Button } from "../ui/button"
-import { useCurrentModal } from "../ui/modal"
+import { useCurrentModal } from "../ui/modal/stacked/hooks"
 import { parseError } from "./helper"
 
-export const ModalErrorFallback: FC<AppErrorFallbackProps> = (props) => {
+const ModalErrorFallback: FC<AppErrorFallbackProps> = (props) => {
   const { message, stack } = parseError(props.error)
   const modal = useCurrentModal()
   return (
@@ -26,7 +26,7 @@ export const ModalErrorFallback: FC<AppErrorFallbackProps> = (props) => {
         </div>
         <div className="text-lg font-bold">{message}</div>
         {import.meta.env.DEV && stack ? (
-          <pre className="mt-4 max-h-48 cursor-text overflow-auto whitespace-pre-line rounded-md bg-red-50 p-4 text-left font-mono text-sm text-red-600">
+          <pre className="mt-4 max-h-48 cursor-text select-text overflow-auto whitespace-pre-line rounded-md bg-red-50 p-4 text-left font-mono text-sm text-red-600">
             {attachOpenInEditor(stack)}
           </pre>
         ) : null}
@@ -45,8 +45,9 @@ export const ModalErrorFallback: FC<AppErrorFallbackProps> = (props) => {
           </Button>
         </div>
 
-        <FeedbackIssue message={message!} stack={stack} />
+        <FeedbackIssue message={message!} stack={stack} error={props.error} />
       </div>
     </m.div>
   )
 }
+export default ModalErrorFallback

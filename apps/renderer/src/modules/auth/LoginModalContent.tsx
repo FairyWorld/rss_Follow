@@ -1,122 +1,119 @@
+import { useMobile } from "@follow/components/hooks/useMobile.js"
+import { Logo } from "@follow/components/icons/logo.js"
+import { MotionButtonBase } from "@follow/components/ui/button/index.js"
+import { Divider } from "@follow/components/ui/divider/Divider.js"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipPortal,
+  TooltipTrigger,
+} from "@follow/components/ui/tooltip/index.js"
+import type { LoginRuntime } from "@follow/shared/auth"
+import { loginHandler } from "@follow/shared/auth"
 import clsx from "clsx"
-import { AnimatePresence, m } from "framer-motion"
-import { useState } from "react"
+import { m } from "framer-motion"
 import { useTranslation } from "react-i18next"
 
-import { FollowIcon } from "~/components/icons/follow"
-import { MotionButtonBase } from "~/components/ui/button"
-import { LoadingCircle } from "~/components/ui/loading"
-import { useCurrentModal } from "~/components/ui/modal"
-import { modalMontionConfig } from "~/components/ui/modal/stacked/constants"
-import type { LoginRuntime } from "~/lib/auth"
-import { loginHandler } from "~/lib/auth"
-import { stopPropagation } from "~/lib/dom"
+import { useCurrentModal } from "~/components/ui/modal/stacked/hooks"
+import { isInMAS } from "~/lib/utils"
+import { useAuthProviders } from "~/queries/users"
+
+import { LoginWithPassword } from "./Form"
 
 interface LoginModalContentProps {
-  runtime?: LoginRuntime
+  runtime: LoginRuntime
   canClose?: boolean
 }
+
+const overrideAuthProvidersClassName = {
+  github: "!text-dark dark:!text-white",
+  apple: "!text-[#1F2937] dark:!text-[#E5E7EB]",
+}
+
 export const LoginModalContent = (props: LoginModalContentProps) => {
   const modal = useCurrentModal()
 
   const { canClose = true, runtime } = props
 
   const { t } = useTranslation()
+  const { data: authProviders } = useAuthProviders()
 
-  const [loadingLockSet, setLoadingLockSet] = useState<false | string>(false)
+  const isMobile = useMobile()
+
+  const Inner = (
+    <>
+      <div className="-mt-8 mb-4 flex items-center justify-center">
+        <Logo className="size-14" />
+      </div>
+      <div className="mb-4 mt-6 text-center">
+        <span className="text-2xl">
+          {t("signin.sign_in_to")} <b>{APP_NAME}</b>
+        </span>
+      </div>
+
+      <LoginWithPassword runtime={runtime} />
+      {!isInMAS() && (
+        <>
+          <div className="my-3 w-full space-y-2">
+            <div className="flex items-center justify-center">
+              <Divider className="flex-1" />
+              <p className="px-4 text-center text-sm text-muted-foreground">{t("login.or")}</p>
+              <Divider className="flex-1" />
+            </div>
+          </div>
+          <div className="mb-3 flex items-center justify-center gap-4">
+            {Object.entries(authProviders || [])
+              .filter(([key]) => key !== "credential")
+              .map(([key, provider]) => (
+                <Tooltip key={key} delayDuration={0}>
+                  <TooltipTrigger>
+                    <MotionButtonBase
+                      onClick={() => {
+                        loginHandler(key, "app")
+                      }}
+                    >
+                      <div
+                        className={clsx(
+                          "center inline-flex rounded-full border p-2.5 duration-200 hover:bg-muted [&_svg]:size-6",
+                          overrideAuthProvidersClassName[key],
+                        )}
+                        dangerouslySetInnerHTML={{
+                          __html: provider.icon,
+                        }}
+                        style={{
+                          color: provider.color,
+                        }}
+                      />
+                    </MotionButtonBase>
+                  </TooltipTrigger>
+                  <TooltipPortal>
+                    <TooltipContent>
+                      {t("login.continueWith", { provider: provider.name })}
+                    </TooltipContent>
+                  </TooltipPortal>
+                </Tooltip>
+              ))}
+          </div>
+        </>
+      )}
+    </>
+  )
+  if (isMobile) {
+    return Inner
+  }
 
   return (
     <div className="center flex h-full" onClick={canClose ? modal.dismiss : undefined}>
       <m.div
-        className="shadow-modal rounded-lg border border-border bg-theme-background p-4 px-8 pb-8"
-        onClick={stopPropagation}
-        {...modalMontionConfig}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 10, transition: { type: "tween" } }}
+        transition={{ type: "spring" }}
       >
-        <div className="mb-8 mt-4 text-center align-middle font-sans text-2xl font-bold leading-relaxed">
-          <span className="text-xl">{t("signin.sign_in_to")}</span>
-          <span className="center flex translate-y-px gap-2 font-theme text-accent">
-            <FollowIcon className="size-4" />
-            {APP_NAME}
-          </span>
-        </div>
-        <div className="flex flex-col gap-4">
-          <MotionButtonBase
-            className={clsx(
-              "center h-[48px] w-[320px] rounded-[8px] !bg-black font-sans text-base font-medium text-white hover:!bg-black/80 focus:!border-black/80 focus:!ring-black/80",
-              !!loadingLockSet && "pointer-events-none opacity-50",
-              "overflow-hidden",
-            )}
-            disabled={!!loadingLockSet}
-            onClick={() => {
-              loginHandler("github", runtime)
-              setLoadingLockSet("github")
-            }}
-          >
-            <LoginButtonContent isLoading={loadingLockSet === "github"}>
-              <i className="i-mgc-github-cute-fi mr-2 text-xl" />
-              {t("signin.continue_with_github")}
-            </LoginButtonContent>
-          </MotionButtonBase>
-          <MotionButtonBase
-            disabled={!!loadingLockSet}
-            className={clsx(
-              "center h-[48px] w-[320px] rounded-[8px] bg-blue-500 font-sans text-base font-medium text-white hover:bg-blue-500/90 focus:!border-blue-500/80 focus:!ring-blue-500/80",
-              !!loadingLockSet && "pointer-events-none opacity-50",
-              "overflow-hidden",
-            )}
-            onClick={() => {
-              loginHandler("google", runtime)
-              setLoadingLockSet("google")
-            }}
-          >
-            <LoginButtonContent isLoading={loadingLockSet === "google"}>
-              <i className="i-mgc-google-cute-fi mr-2 text-xl" />
-              {t("signin.continue_with_google")}
-            </LoginButtonContent>
-          </MotionButtonBase>
+        <div className="rounded-xl border bg-background p-3 px-8 shadow-2xl shadow-stone-300 dark:border-neutral-700 dark:shadow-stone-800">
+          {Inner}
         </div>
       </m.div>
     </div>
-  )
-}
-
-const LoginButtonContent = (props: { children: React.ReactNode; isLoading: boolean }) => {
-  const { children, isLoading } = props
-  return (
-    <AnimatePresence mode="popLayout">
-      {isLoading ? (
-        <m.div
-          animate={{
-            y: 0,
-            opacity: 1,
-          }}
-          initial={{
-            y: -30,
-            opacity: 0,
-          }}
-          transition={{
-            type: "spring",
-          }}
-          key="loading"
-          className="contents"
-        >
-          <LoadingCircle size={"medium"} />
-        </m.div>
-      ) : (
-        <m.div
-          key="text"
-          className="center whitespace-nowrap"
-          transition={{
-            type: "spring",
-          }}
-          exit={{
-            y: "-100%",
-            opacity: 0,
-          }}
-        >
-          {children}
-        </m.div>
-      )}
-    </AnimatePresence>
   )
 }

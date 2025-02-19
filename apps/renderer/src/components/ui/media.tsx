@@ -1,24 +1,29 @@
+import { nextFrame } from "@follow/utils/dom"
+import { cn } from "@follow/utils/utils"
+import { omit } from "es-toolkit/compat"
 import { useForceUpdate } from "framer-motion"
 import type { FC, ImgHTMLAttributes, VideoHTMLAttributes } from "react"
-import { memo, useMemo, useState } from "react"
+import { createContext, memo, useContext, useMemo, useState } from "react"
+import { Blurhash, BlurhashCanvas } from "react-blurhash"
 import { useEventCallback } from "usehooks-ts"
 
-import { nextFrame } from "~/lib/dom"
 import { getImageProxyUrl } from "~/lib/img-proxy"
-import { cn } from "~/lib/utils"
 import { saveImageDimensionsToDb } from "~/store/image/db"
 
 import { usePreviewMedia } from "./media/hooks"
 import type { VideoPlayerRef } from "./media/VideoPlayer"
 import { VideoPlayer } from "./media/VideoPlayer"
 
-const failedList = new Set<string | undefined>()
-
 type BaseProps = {
   mediaContainerClassName?: string
   showFallback?: boolean
   thumbnail?: boolean
+  blurhash?: string
+  inline?: boolean
+  fitContent?: boolean
 }
+
+const isImageLoadedSet = new Set<string>()
 export type MediaProps = BaseProps &
   (
     | (ImgHTMLAttributes<HTMLImageElement> & {
@@ -26,6 +31,7 @@ export type MediaProps = BaseProps &
           width: number
           height: number
         }
+        preferOrigin?: boolean
         popper?: boolean
         type: "photo"
         previewImageUrl?: string
@@ -36,53 +42,119 @@ export type MediaProps = BaseProps &
           width: number
           height: number
         }
+        preferOrigin?: boolean
         popper?: boolean
         type: "video"
         previewImageUrl?: string
       })
   )
+
 const MediaImpl: FC<MediaProps> = ({
   className,
   proxy,
+  preferOrigin,
   popper = false,
   mediaContainerClassName,
   thumbnail,
   ...props
 }) => {
-  const { src, style, type, previewImageUrl, showFallback, ...rest } = props
+  const {
+    src,
+    style,
+    type,
+    previewImageUrl,
+    showFallback,
+    blurhash,
+    height,
+    width,
+    inline,
+    fitContent,
+    ...rest
+  } = props
+
+  const ctxMediaInfo = useContext(MediaInfoRecordContext)
+  const ctxHeight = ctxMediaInfo[src!]?.height
+  const ctxWidth = ctxMediaInfo[src!]?.width
+
+  const finalHeight = height || ctxHeight
+  const finalWidth = width || ctxWidth
+
+  const [currentState, setCurrentState] = useState<"proxy" | "origin" | "error">(() =>
+    proxy && !preferOrigin ? "proxy" : "origin",
+  )
 
   const [imgSrc, setImgSrc] = useState(() =>
-    proxy && src && !failedList.has(src)
+    currentState === "proxy" && src
       ? getImageProxyUrl({
           url: src,
-          width: proxy.width,
-          height: proxy.height,
+          width: proxy?.width || 0,
+          height: proxy?.height || 0,
         })
       : src,
   )
 
-  const [mediaLoadState, setMediaLoadState] = useState<"loading" | "loaded" | "error">("loading")
-  const errorHandle: React.ReactEventHandler<HTMLImageElement> = useEventCallback((e) => {
-    if (imgSrc !== props.src) {
-      setImgSrc(props.src)
-      failedList.add(props.src)
-    } else {
-      setMediaLoadState("error")
+  const previewImageSrc = useMemo(
+    () =>
+      currentState === "proxy" && previewImageUrl
+        ? getImageProxyUrl({
+            url: previewImageUrl,
+            width: proxy?.width || 0,
+            height: proxy?.height || 0,
+          })
+        : previewImageUrl,
+    [currentState, previewImageUrl, proxy?.width, proxy?.height],
+  )
 
-      props.onError?.(e as any)
+  const [mediaLoadState, setMediaLoadState] = useState<"loading" | "loaded">(() => {
+    if (imgSrc) {
+      return isImageLoadedSet.has(imgSrc) ? "loaded" : "loading"
+    }
+    return "loading"
+  })
+
+  const errorHandle: React.ReactEventHandler<HTMLImageElement> = useEventCallback(() => {
+    switch (currentState) {
+      case "proxy": {
+        if (imgSrc !== props.src && props.src) {
+          setImgSrc(props.src)
+        } else {
+          setCurrentState("error")
+        }
+        break
+      }
+      case "origin": {
+        if (imgSrc === props.src && props.src) {
+          setImgSrc(
+            getImageProxyUrl({
+              url: props.src,
+              width: proxy?.width || 0,
+              height: proxy?.height || 0,
+            }),
+          )
+        } else {
+          setCurrentState("error")
+        }
+        break
+      }
     }
   })
 
-  const isError = mediaLoadState === "error"
+  const isError = currentState === "error"
   const previewMedia = usePreviewMedia()
   const handleClick = useEventCallback((e: React.MouseEvent) => {
+    e.preventDefault()
     if (popper && src) {
+      const width = Number.parseInt(props.width as string)
+      const height = Number.parseInt(props.height as string)
       previewMedia(
         [
           {
             url: src,
             type,
             fallbackUrl: imgSrc,
+            blurhash: props.blurhash,
+            width: width || undefined,
+            height: height || undefined,
           },
         ],
         0,
@@ -93,29 +165,39 @@ const MediaImpl: FC<MediaProps> = ({
   const handleOnLoad: React.ReactEventHandler<HTMLImageElement> = useEventCallback((e) => {
     setMediaLoadState("loaded")
     rest.onLoad?.(e as any)
+
+    if (imgSrc) {
+      isImageLoadedSet.add(imgSrc)
+    }
     if ("cacheDimensions" in props && props.cacheDimensions && src) {
       saveImageDimensionsToDb(src, {
         src,
         width: e.currentTarget.naturalWidth,
         height: e.currentTarget.naturalHeight,
         ratio: e.currentTarget.naturalWidth / e.currentTarget.naturalHeight,
+        blurhash: props.blurhash,
       })
     }
   })
+
+  const containerWidth = useMediaContainerWidth()
 
   const InnerContent = useMemo(() => {
     switch (type) {
       case "photo": {
         return (
           <img
-            {...(rest as ImgHTMLAttributes<HTMLImageElement>)}
+            height={finalHeight}
+            width={finalWidth}
+            {...(omit(rest, "cacheDimensions") as ImgHTMLAttributes<HTMLImageElement>)}
             onError={errorHandle}
             className={cn(
-              !(props.width || props.height) && "size-full",
-              "cursor-card bg-gray-200 object-cover duration-200 dark:bg-neutral-800",
+              "size-full object-contain",
+              inline && "inline size-auto align-sub",
               popper && "cursor-zoom-in",
+              "duration-200",
               mediaLoadState === "loaded" ? "opacity-100" : "opacity-0",
-
+              "!my-0",
               mediaContainerClassName,
             )}
             src={imgSrc}
@@ -129,13 +211,13 @@ const MediaImpl: FC<MediaProps> = ({
           <span
             className={cn(
               "center",
-              !(props.width || props.height) && "size-full",
+              !(finalWidth || finalHeight) && "size-full",
               "relative cursor-card bg-stone-100 object-cover",
               mediaContainerClassName,
             )}
             onClick={handleClick}
           >
-            <VideoPreview src={src!} previewImageUrl={previewImageUrl} thumbnail={thumbnail} />
+            <VideoPreview src={src!} previewImageUrl={previewImageSrc} thumbnail={thumbnail} />
           </span>
         )
       }
@@ -149,13 +231,16 @@ const MediaImpl: FC<MediaProps> = ({
     handleOnLoad,
     imgSrc,
     mediaContainerClassName,
+    finalHeight,
+    finalWidth,
     mediaLoadState,
     popper,
-    previewImageUrl,
-    props,
+    previewImageSrc,
     rest,
     src,
+    thumbnail,
     type,
+    inline,
   ])
 
   if (!type || !src) return null
@@ -173,9 +258,33 @@ const MediaImpl: FC<MediaProps> = ({
     } else {
       return (
         <div
-          className={cn("rounded bg-zinc-100 dark:bg-neutral-900", className)}
+          className={cn("relative overflow-hidden rounded", className)}
+          data-state={mediaLoadState}
           style={props.style}
-        />
+        >
+          <span
+            className={cn(
+              "relative inline-block max-w-full bg-theme-placeholder-image",
+              mediaContainerClassName,
+            )}
+            style={{
+              aspectRatio:
+                props.height && props.width ? `${props.width} / ${props.height}` : undefined,
+              width: props.width ? `${props.width}px` : "100%",
+            }}
+          >
+            {props.blurhash && (
+              <span
+                className={cn(
+                  "absolute inset-0 overflow-hidden rounded",
+                  mediaLoadState === "loaded" && "animate-out fade-out-0 fill-mode-forwards",
+                )}
+              >
+                <BlurhashCanvas hash={props.blurhash} className="size-full" />
+              </span>
+            )}
+          </span>
+        </div>
       )
     }
   }
@@ -183,10 +292,36 @@ const MediaImpl: FC<MediaProps> = ({
   return (
     <span
       data-state={type !== "video" ? mediaLoadState : undefined}
-      className={cn("block overflow-hidden rounded", className)}
+      className={cn("relative overflow-hidden rounded", inline ? "inline" : "block", className)}
       style={style}
     >
-      {InnerContent}
+      {!!props.width && !!props.height && !!containerWidth ? (
+        <AspectRatio
+          width={Number.parseInt(props.width as string)}
+          height={Number.parseInt(props.height as string)}
+          containerWidth={containerWidth}
+          fitContent={fitContent}
+        >
+          <div
+            className={cn(
+              "absolute inset-0 flex items-center justify-center overflow-hidden rounded",
+              mediaLoadState === "loaded" && "animate-out fade-out-0 fill-mode-forwards",
+            )}
+            data-blurhash={blurhash}
+          >
+            {blurhash ? (
+              <Blurhash hash={blurhash} width="100%" height="100%" />
+            ) : (
+              <div className="size-full bg-border" />
+            )}
+          </div>
+          <div className="absolute inset-0 flex items-center justify-center overflow-hidden rounded">
+            {InnerContent}
+          </div>
+        </AspectRatio>
+      ) : (
+        InnerContent
+      )}
     </span>
   )
 }
@@ -197,29 +332,71 @@ const FallbackMedia: FC<MediaProps> = ({ type, mediaContainerClassName, classNam
   <div className={className} style={props.style}>
     <div
       className={cn(
-        !(props.width || props.height) && "size-full",
+        "size-full",
         "center rounded bg-zinc-100 dark:bg-neutral-900",
-        "not-prose !flex max-h-full flex-col space-y-1 p-4",
-
+        "not-prose !flex max-h-full flex-col space-y-1 p-4 @container",
         mediaContainerClassName,
       )}
-      style={{
-        height: props.height ? `${props.height}px` : "",
-        width: props.width ? `${props.width}px` : "100%",
-      }}
     >
-      <i className="i-mgc-close-cute-re text-xl text-red-500" />
-      <p>Media loaded failed</p>
-      <div className="space-x-1 break-all px-4 text-sm">
-        Go to{" "}
-        <a href={props.src} target="_blank" rel="noreferrer" className="follow-link--underline">
-          {props.src}
-        </a>
-        <i className="i-mgc-external-link-cute-re translate-y-px" />
+      <div className="hidden @sm:hidden @md:contents">
+        <i className="i-mgc-close-cute-re text-xl text-red-500" />
+        <p>Media loaded failed</p>
+        <div className="space-x-1 break-all px-4 text-sm">
+          Go to{" "}
+          <a href={props.src} target="_blank" rel="noreferrer" className="follow-link--underline">
+            original media url
+          </a>
+          <i className="i-mgc-external-link-cute-re translate-y-0.5" />
+        </div>
       </div>
     </div>
   </div>
 )
+
+const AspectRatio = ({
+  width,
+  height,
+  containerWidth,
+  children,
+  style,
+  fitContent,
+  ...props
+}: {
+  width: number
+  height: number
+  containerWidth?: number
+  children: React.ReactNode
+  style?: React.CSSProperties
+  /**
+   * If `fit` is true, the content width may be increased to fit the container width
+   */
+  fitContent?: boolean
+  [key: string]: any
+}) => {
+  const scaleFactor =
+    containerWidth && width
+      ? fitContent
+        ? containerWidth / width
+        : Math.min(1, containerWidth / width)
+      : 1
+
+  const scaledWidth = width ? width * scaleFactor : undefined
+  const scaledHeight = height ? height * scaleFactor : undefined
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: scaledWidth ? `${scaledWidth}px` : "100%",
+        height: scaledHeight ? `${scaledHeight}px` : "auto",
+        ...style,
+      }}
+      {...props}
+    >
+      {children}
+    </div>
+  )
+}
 
 const VideoPreview: FC<{
   src: string
@@ -271,5 +448,42 @@ const VideoPreview: FC<{
         <i className="i-mgc-play-cute-fi" />
       </div>
     </div>
+  )
+}
+
+const MediaContainerWidthContext = createContext<number>(0)
+export const MediaContainerWidthProvider = ({
+  children,
+  width,
+}: {
+  children: React.ReactNode
+  width: number
+}) => {
+  return (
+    <MediaContainerWidthContext.Provider value={width}>
+      {children}
+    </MediaContainerWidthContext.Provider>
+  )
+}
+
+const useMediaContainerWidth = () => {
+  return useContext(MediaContainerWidthContext)
+}
+
+export type MediaInfoRecord = Record<string, { width?: number; height?: number }>
+const MediaInfoRecordContext = createContext<MediaInfoRecord>({})
+
+const noop = {} as const
+export const MediaInfoRecordProvider = ({
+  children,
+  mediaInfo,
+}: {
+  children: React.ReactNode
+  mediaInfo?: MediaInfoRecord
+}) => {
+  return (
+    <MediaInfoRecordContext.Provider value={mediaInfo || noop}>
+      {children}
+    </MediaInfoRecordContext.Provider>
   )
 }
